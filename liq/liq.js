@@ -4,7 +4,7 @@ const axios = require('axios');
 const web3 = new Web3(process.env.GOERLI_RPC); 
 
 
-const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.9"; 
+const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
 const mel0n = "0xbf43260bb34daf3ba6f1fd8c3be31c3bb48bdf49";  
 const lending_pool_address = "0x9B0baDC6fb17802F8d32b183700C3B957273aeDb"; 
 const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
@@ -39,8 +39,9 @@ async function main() {
 	}
 }
 
-main(); 
+//main(); 
 
+//instead of looping through every user, we should probably just get active borrows
 async function getLiquidatableAccounts() {
 	let liquidatable = []; 
 	const users = await getUsers(); 
@@ -57,59 +58,110 @@ async function getLiquidatableAccounts() {
 
 //getLiquidatableAccounts(); 
 
-async function getLiquidationParams(user_address) {
-	let supplied_assets = []; 
-	let borrowed_assets = []; 
+async function getTrancheDatas() {
 	await axios.post(api_url, { 
 		query: `{
-				  user(id: "${user_address}") {
-					reserves {
-						currentVariableDebt 
-						reserve {
-							aToken {
-								underlyingAssetAddress 
+		  users {
+			  id
+  			  borrowedReservesCount
+  			  collateralReserve: reserves(where:{currentATokenBalance_gt: 0}) {
+  			    currentATokenBalance
+  			    reserve {
+  			      underlyingAsset
+  			      name
+  			      tranche {
+  			        id
+  			        name
+  			      }
+  			    }
+  			  }
+  			  borrowReserve: reserves(where: {currentTotalDebt_gt: 0}) {
+  			    currentTotalDebt
+  			    reserve {
+  			      underlyingAsset
+  			      name
+  			      tranche {
+  			        id
+  			        name
+  			      }
+  			    }
+  			  }
+  			}
+}
+`
+	}).then((res) => {
+		
+		let userData = {};
+
+		let availableUsers = []; 
+		const data = res.data.data; 
+		const users = data.users; 
+		
+		//break down by user
+		//user address holds individual tranche data
+		//collateral[{
+		//	totalCollater}]
+		//borrows[{}]
+		for (let i = 0; i < users.length; i++) {
+			if (users[i].borrowedReservesCount != 0) {
+					userData = {
+						user: "",
+						//tranche
+							//collateral[]
+							//borrows[]
+						}
+				const user = users[i]; 
+				userData.user = user.id; 
+
+				const collateralReserves = user.collateralReserve; 
+				const borrowReserves = user.borrowReserve; 
+				userData.tranches = []; 
+
+				//on per-tranche basis
+				for (let j = 0; j < collateralReserves.length; j++) {
+					const collateralReserve = collateralReserves[j]; 
+					let trancheData = {
+						id: collateralReserve.reserve.tranche.id,
+						name: collateralReserve.reserve.tranche.name,
+						totalCollateral: collateralReserve.currentATokenBalance
+					}
+
+					userData.tranches.push(trancheData); 
+					userData.tranches[j].collateral = []; 
+					let collateralData = {
+						token: collateralReserve.reserve.underlyingAsset,
+						name: collateralReserve.reserve.name,
+					}
+
+					userData.tranches[j].collateral.push(collateralData); 
+				}
+
+				//on per-tranche basis
+				for (let j = 0; j < borrowReserves.length; j++) {
+					const borrowReserve = borrowReserves[j]; 
+					for (let k = 0; k < userData.tranches.length; k++) {
+						if (userData.tranches[k].id == borrowReserve.reserve.tranche.id) {
+							userData.tranches[k].totalDebt = borrowReserve.currentTotalDebt; 	
+							userData.tranches[k].borrows = []; 
+							let borrowData = {
+								token: borrowReserve.reserve.underlyingAsset,
+								name: borrowReserve.reserve.name
 							}
-							tranche {
-								id
-							}
+							userData.tranches[k].borrows.push(borrowData); 
 						}
 					}
-				  }
 				}
-`
-	}).then((res) => {
-		const reserves = res.data.data.user.reserves; 
-		for (let i = 0; i < reserves.length; i++) {
-			if (reserves[i].currentVariableDebt == 0) {
-				supplied_assets.push(reserves[i]); 
-			} else {
-				borrowed_assets.push(reserves[i]); 
+
+				availableUsers.push(userData); 
 			}
 		}
+		console.log(availableUsers); 
+		return availableUsers; 
+		
 	}); 
-	return [supplied_assets, borrowed_assets]; 
 }
 
-//getLiquidationParams(mel0n); 
-
-async function getUsers() {
-	let users = []; 
-	await axios.post(api_url, { 
-		query: `{
-				  users {
-				    id
-				  }
-				}
-`
-	}).then((res) => {
-		const data = res.data.data.users; 
-		for(let i = 0; i < data.length; i ++) {
-			let user = data[i].id; 
-			users.push(user); 	
-		}
-	}); 
-	return users; 
-}
+getTrancheDatas(); 
 
 //TODO
 //if done off chain, calculation will probably be faster -- check using aave 
