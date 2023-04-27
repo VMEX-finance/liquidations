@@ -5,7 +5,6 @@ const web3 = new Web3(process.env.GOERLI_RPC);
 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
-const mel0n = "0xbf43260bb34daf3ba6f1fd8c3be31c3bb48bdf49";  
 const lending_pool_address = "0x9B0baDC6fb17802F8d32b183700C3B957273aeDb"; 
 const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
 
@@ -22,7 +21,6 @@ const lendingPool = new web3.eth.Contract(
 			//debtAmount; //currentVariableDebt >> get? 
 
 //main entry
-//TODO: figure out what happens when a user has more than one asset as collateral or borrowed, which do we submit for liquidation?
 async function main() {
 	let liq_params = {}; 
 	const liquidatable = await getLiquidatableAccounts(); 	
@@ -63,12 +61,15 @@ async function getTrancheDatas() {
 		query: `{
 		  users {
 			  id
-  			  borrowedReservesCount
+ 			  borrowedReservesCount
   			  collateralReserve: reserves(where:{currentATokenBalance_gt: 0}) {
   			    currentATokenBalance
   			    reserve {
   			      underlyingAsset
   			      name
+				  assetData {
+					liquidationThreshold
+				  }
   			      tranche {
   			        id
   			        name
@@ -80,6 +81,9 @@ async function getTrancheDatas() {
   			    reserve {
   			      underlyingAsset
   			      name
+				  assetData {
+					liquidationThreshold
+				  }
   			      tranche {
   			        id
   			        name
@@ -92,8 +96,8 @@ async function getTrancheDatas() {
 	}).then((res) => {
 		
 		let userData = {};
-
 		let availableUsers = []; 
+
 		const data = res.data.data; 
 		const users = data.users; 
 		
@@ -141,21 +145,34 @@ async function getTrancheDatas() {
 					const borrowReserve = borrowReserves[j]; 
 					for (let k = 0; k < userData.tranches.length; k++) {
 						if (userData.tranches[k].id == borrowReserve.reserve.tranche.id) {
-							userData.tranches[k].totalDebt = borrowReserve.currentTotalDebt; 	
-							userData.tranches[k].borrows = []; 
-							let borrowData = {
-								token: borrowReserve.reserve.underlyingAsset,
-								name: borrowReserve.reserve.name
+								userData.tranches[k].totalDebt = borrowReserve.currentTotalDebt; 	
+								userData.tranches[k].borrows = []; 
+								let borrowData = {
+									token: borrowReserve.reserve.underlyingAsset,
+									name: borrowReserve.reserve.name,
+									liquidationThreshold: borrowReserve.reserve.assetData.liquidationThreshold
+								}
+								userData.tranches[k].borrows.push(borrowData); 
 							}
-							userData.tranches[k].borrows.push(borrowData); 
 						}
 					}
-				}
 
 				availableUsers.push(userData); 
 			}
 		}
-		console.log(availableUsers); 
+
+		//TODO: add all users and tranches together
+		for (let i = 0; i < availableUsers.length; i++) {
+			const user = availableUsers[i]; 
+			for (let j = 0; j < user.tranches.length; j++) {
+				if (user.tranches[j].hasOwnProperty("borrows")) {
+					console.log("no borrows"); 
+				} else {
+					console.log("no borrows"); 
+				}	
+			}
+		}
+
 		return availableUsers; 
 		
 	}); 
@@ -163,13 +180,30 @@ async function getTrancheDatas() {
 
 getTrancheDatas(); 
 
-//TODO
-//if done off chain, calculation will probably be faster -- check using aave 
-async function getHealthFactor(user_address) {
+async function getHealthFactor(users) {
 	//given a user's address, get the health factor from the lending pool contract using a web3 call	
-	const healthFactor = await lendingPool.methods.getUserAccountData(user_address, 0, false).call(); 
-	//console.log(healthFactor[5]); 
-	return healthFactor[5]; 
+	for (let i = 0; i < users.length; i++) {
+		const user = users[i];
+		for (let j = 0; j < user.tranches.length; j++) {
+			const tranche = user.tranche[j]; 
+			//if (tranche.borrows 
+		}
+	}
 }
+
+function calculateHealthFactor(totalCollateral, liquidationThreshold, totalDebt) {
+	//calcs totalCollat * liquidationThreshold / totalDebt	
+	return (totalCollateral * liquidationThreshold) / totalDebt; 
+}
+
+function calculateLiquidationThreshold(loans) {
+	//weighted average of collateral (priced in eth) * liquidationThreshold of the asset 
+	var n = 0;   	
+	while (n < loans.length) {
+		n++; 
+	}
+}
+
+//getHealthFactor("0x2ddc2e6ec28ada2e945f36abffdc25dc24d16390"); 
 
 
