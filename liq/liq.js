@@ -5,7 +5,7 @@ const web3 = new Web3(process.env.GOERLI_RPC);
 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
-const lending_pool_address = "0x9B0baDC6fb17802F8d32b183700C3B957273aeDb"; 
+const lending_pool_address = "0xdff58B48df141BCb86Ba6d06EEaABF02Ef45C528"; 
 const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
 
 const lendingPool = new web3.eth.Contract(
@@ -22,33 +22,45 @@ const lendingPool = new web3.eth.Contract(
 
 //main entry
 async function main() {
-	let liq_params = {}; 
 	const liquidatable = await getLiquidatableAccounts(); 	
 	for (let i = 0; i < liquidatable.length; i ++) {
-		const [supplies, borrows]  = await getLiquidationParams(liquidatable[i]); 
-		liq_params = {
-			collateralAsset: supplies[0].reserve.aToken.underlyingAssetAddress,
-			debtAsset: borrows[0].reserve.aToken.underlyingAssetAddress,
-			trancheId: supplies[0].reserve.tranche.id,
-			user: liquidatable[i],
-			debtAmount: borrows[0].currentVariableDebt
+		let liq_params = {
+			collateralAsset: liquidatable[i].collateralAsset,
+			debtAsset: liquidatable[i].debtAsset,
+			trancheId: liquidatable[i].tranche,
+			user: liquidatable[i].user,
+			debtAmount: liquidatable[i].debtAmount
 		}; 
 		console.log(liq_params); 
 	}
+	
+	//TODO; 
+	//pass data to liquidation smart contract
 }
 
-//main(); 
+main(); 
 
 //instead of looping through every user, we should probably just get active borrows
 async function getLiquidatableAccounts() {
 	let liquidatable = []; 
-	const users = await getUsers(); 
+	const users = await getTrancheDatas(); 
 	for (let i = 0; i < users.length; i++) {
-		const healthFactor = await getHealthFactor(users[i]); 
-		//temp
-		if (healthFactor < 1.1e18) {
-			liquidatable.push(users[i]); 
-		}
+		const user = users[i]; 
+		for	(let j = 0; j < user.tranches.length; j++) {
+			const tranche = user.tranches[j]; 
+			const healthFactor = await getHealthFactor(user.id, tranche.id); 
+			if (healthFactor < 2e18) {
+				const liquidationData = {
+					user: user.id,
+					tranche: tranche.id,
+					collateralAsset: tranche.collat,
+					debtAsset: tranche.debt,
+					debtAmount: tranche.amount
+				}
+
+				liquidatable.push(liquidationData); 
+			}
+		}	
 	}
 
 	return liquidatable; 
@@ -56,154 +68,96 @@ async function getLiquidatableAccounts() {
 
 //getLiquidatableAccounts(); 
 
+//this one is much better, there are still some repeats, but much cleaner
+//TODO: (time permitting) fix repeats 
 async function getTrancheDatas() {
+	let availableUsers = []; 
+
 	await axios.post(api_url, { 
 		query: `{
-		  users {
-			  id
- 			  borrowedReservesCount
-  			  collateralReserve: reserves(where:{currentATokenBalance_gt: 0}) {
-  			    currentATokenBalance
-  			    reserve {
-  			      underlyingAsset
-  			      name
-				  assetData {
-					liquidationThreshold
-				  }
-  			      tranche {
-  			        id
-  			        name
-  			      }
-  			    }
-  			  }
-  			  borrowReserve: reserves(where: {currentTotalDebt_gt: 0}) {
-  			    currentTotalDebt
-  			    reserve {
-  			      underlyingAsset
-  			      name
-				  assetData {
-					liquidationThreshold
-				  }
-  			      tranche {
-  			        id
-  			        name
-  			      }
-  			    }
-  			  }
-  			}
+		  users(where: {borrowedReservesCount_gt: 0}) {
+			id
+    		borrowedReservesCount
+    		borrowReserve: reserves(where: {currentTotalDebt_gt: 0}) {
+    		  currentTotalDebt
+    		  reserve {
+    		    assetData {
+    		      underlyingAssetName
+				  id
+    		    }
+    		    tranche {
+    		      id
+    		    }
+    		  }
+    		}
+    		collateralReserve: reserves{
+    		  currentATokenBalance
+    		  reserve{
+    		     assetData {
+    		      underlyingAssetName
+				  id
+    		    }
+    		    tranche{
+    		      id
+    		    }
+    		  }
+    		}
+		}
 }
 `
 	}).then((res) => {
 		
-		let userData = {};
-		let availableUsers = []; 
-
+		let userData = {}; 
 		const data = res.data.data; 
 		const users = data.users; 
-		
-		//break down by user
-		//user address holds individual tranche data
-		//collateral[{
-		//	totalCollater}]
-		//borrows[{}]
+
 		for (let i = 0; i < users.length; i++) {
-			if (users[i].borrowedReservesCount != 0) {
-					userData = {
-						user: "",
-						//tranche
-							//collateral[]
-							//borrows[]
+			userData = {
+				id: "",
+			}
+			userData.tranches = []; 
+
+			userData.id = users[i].id; 
+			for (let j = 0; j < users[i].borrowReserve.length; j++) {
+				let tranche = {
+					id: users[i].borrowReserve[j].reserve.tranche.id,
+					debt: users[i].borrowReserve[j].reserve.assetData.id,
+					amount: users[i].borrowReserve[j].currentTotalDebt
+				}	
+				userData.tranches.push(tranche); 
+			}
+				
+
+
+
+			//check if the collateral tranche id matches witht the borrow one
+			//if it does, put the relevant data
+			//if it doesn't, discard it
+			for (let j = 0; j < users[i].collateralReserve.length; j++) {
+					for (let k = 0; k < userData.tranches.length; k++) {
+						if (userData.tranches[k].id == users[i].collateralReserve[j].reserve.tranche.id) {
+							userData.tranches[k].collat = users[i].collateralReserve[j].reserve.assetData.id; 
 						}
-				const user = users[i]; 
-				userData.user = user.id; 
-
-				const collateralReserves = user.collateralReserve; 
-				const borrowReserves = user.borrowReserve; 
-				userData.tranches = []; 
-
-				//on per-tranche basis
-				for (let j = 0; j < collateralReserves.length; j++) {
-					const collateralReserve = collateralReserves[j]; 
-					let trancheData = {
-						id: collateralReserve.reserve.tranche.id,
-						name: collateralReserve.reserve.tranche.name,
-						totalCollateral: collateralReserve.currentATokenBalance
 					}
-
-					userData.tranches.push(trancheData); 
-					userData.tranches[j].collateral = []; 
-					let collateralData = {
-						token: collateralReserve.reserve.underlyingAsset,
-						name: collateralReserve.reserve.name,
-					}
-
-					userData.tranches[j].collateral.push(collateralData); 
 				}
 
-				//on per-tranche basis
-				for (let j = 0; j < borrowReserves.length; j++) {
-					const borrowReserve = borrowReserves[j]; 
-					for (let k = 0; k < userData.tranches.length; k++) {
-						if (userData.tranches[k].id == borrowReserve.reserve.tranche.id) {
-								userData.tranches[k].totalDebt = borrowReserve.currentTotalDebt; 	
-								userData.tranches[k].borrows = []; 
-								let borrowData = {
-									token: borrowReserve.reserve.underlyingAsset,
-									name: borrowReserve.reserve.name,
-									liquidationThreshold: borrowReserve.reserve.assetData.liquidationThreshold
-								}
-								userData.tranches[k].borrows.push(borrowData); 
-							}
-						}
-					}
-
-				availableUsers.push(userData); 
-			}
+			availableUsers.push(userData); 
 		}
-
-		//TODO: add all users and tranches together
-		for (let i = 0; i < availableUsers.length; i++) {
-			const user = availableUsers[i]; 
-			for (let j = 0; j < user.tranches.length; j++) {
-				if (user.tranches[j].hasOwnProperty("borrows")) {
-					console.log("no borrows"); 
-				} else {
-					console.log("no borrows"); 
-				}	
-			}
-		}
-
-		return availableUsers; 
 		
 	}); 
+
+	return availableUsers; 
 }
 
-getTrancheDatas(); 
+//getTrancheDatas(); 
 
-async function getHealthFactor(users) {
+//this is returning max hf for accounts that have active borrows?
+async function getHealthFactor(user, tranche) {
 	//given a user's address, get the health factor from the lending pool contract using a web3 call	
-	for (let i = 0; i < users.length; i++) {
-		const user = users[i];
-		for (let j = 0; j < user.tranches.length; j++) {
-			const tranche = user.tranche[j]; 
-			//if (tranche.borrows 
-		}
-	}
+	const accountData = await lendingPool.methods.getUserAccountData(user, tranche, false).call(); 
+	const healthFactor = accountData[5]; 
+	return healthFactor; 
 }
 
-function calculateHealthFactor(totalCollateral, liquidationThreshold, totalDebt) {
-	//calcs totalCollat * liquidationThreshold / totalDebt	
-	return (totalCollateral * liquidationThreshold) / totalDebt; 
-}
-
-function calculateLiquidationThreshold(loans) {
-	//weighted average of collateral (priced in eth) * liquidationThreshold of the asset 
-	var n = 0;   	
-	while (n < loans.length) {
-		n++; 
-	}
-}
-
-//getHealthFactor("0x2ddc2e6ec28ada2e945f36abffdc25dc24d16390"); 
 
 
