@@ -8,7 +8,7 @@ contract CounterTest is Test {
 	FlashLoanLiquidation internal flashLoanLiquidation; 
 
     function setUp() public {
-		flashLoanLiquidation = new FlashLoanLiquidation(); 
+		//flashLoanLiquidation = new FlashLoanLiquidation(); 
     }
 
 }
