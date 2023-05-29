@@ -13,6 +13,9 @@ import {IBTokenMappings} from "./IBTokenMappings.sol";
 import {IBeefyVault} from "./interfaces/IBeefyVault.sol"; 
 import {ICurveFi} from "./interfaces/ICurveFi.sol"; 
 import {IWETH} from "./interfaces/IWeth.sol"; 
+import {IVeloPair} from "./interfaces/IVeloPair.sol"; 
+import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
+import {IVault, IAsset} from "./interfaces/IBalancerVault.sol"; 
 
 contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase { 
 
@@ -20,12 +23,17 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	IPoolAddressesProvider internal constant aaveAddressesProvider = 
 		IPoolAddressesProvider(0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e); 
 
+	IVeloRouter internal constant veloRouter = 
+		IVeloRouter(0x9c12939390052919aF3155f41Bf4160Fd3666A6f); 
+
 	IBTokenMappings tokenMappings; 
 	
 	ISwapRouter internal swapRouter = 
 		ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); //same on ETH/OP/ARB/POLY
 	IUniswapV3Factory internal factory =
 		IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984); 
+
+	IVault internal balancerVault = IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8); 
 	
 
 	struct Path {
@@ -228,29 +236,29 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 			IBeefyVault beefyVault = IBeefyVault(collateralAsset); // --> receive underlying LP tokens
 			beefyVault.withdraw(beefyShares); 
 			uint256 amountWithdrawnFromCurve; 	
-			uint256 underlyingLP; 
+			uint256 amountUnderlyingLP; 
 			if (underlyingToSwapFor == tokenMappings.WETH()) {
 				//amount of curve tokens
 				uint256 beforeEthBalance = address(this).balance; 
 
-				underlyingLP = 
+				amountUnderlyingLP = 
 					IERC20(0xEfDE221f306152971D8e9f181bFe998447975810).balanceOf(address(this)); 
 				ICurveFi curvePool = ICurveFi(0xB90B9B1F91a01Ea22A182CD84C1E22222e39B415); 
 
 				//remove liquidity from curve, get ETH back
-				curvePool.remove_liquidity_one_coin(underlyingLP, 0, 1); //slippage @ 1 for now
+				curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 0, 1); //slippage @ 1 for now
 				uint256 afterEthbalance = address(this).balance; 
 				uint256 ethDif = afterEthbalance - beforeEthBalance; //so we don't wrap all gas
 				IWETH(tokenMappings.WETH()).deposit{value: ethDif}(); 
 
 				amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
 			} else {
-				underlyingLP = 
+				amountUnderlyingLP = 
 					IERC20(0x061b87122Ed14b9526A813209C8a59a633257bAb).balanceOf(address(this)); 
 				ICurveFi curvePool = ICurveFi(0x061b87122Ed14b9526A813209C8a59a633257bAb); 
 				
 				//remove liquidity from sUSD pool, get 3crv tokens	
-				curvePool.remove_liquidity_one_coin(underlyingLP, 1, 1);
+				curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 1, 1);
 				uint256 underlying3Crv = 
 					IERC20(0x1337BedC9D22ecbe766dF105c9623922A27963EC).balanceOf(address(this)); 
 
@@ -264,12 +272,92 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 			//curve now unwrapped to base USDC or WETH
 			
 			return amountWithdrawnFromCurve; 
-		} else if (protocol = 1) { //velodrome
+
+		} else if (protocol == 1) { //velodrome
+
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
+			bool stable = tokenMappings.stable(collateralAsset); 
 			uint256 beefyShares = IERC20(collateralAsset).balanceOf(address(this)); 
 			IBeefyVault beefyVault = IBeefyVault(collateralAsset); // --> receive underlying LP tokens
+			address underlyingLP = beefyVault.want(); 
+
 			beefyVault.withdraw(beefyShares); 
+			
+			//underlying VELO lp
+			uint256 amountUnderlyingLP = IERC20(underlyingLP).balanceOf(address(this)); 
+
+			//get underlying VELO tokens via VeloPair
+			(address token0, address token1) = IVeloPair(underlyingLP).tokens(); 
+			
+			//remove liquidity via router
+			veloRouter.removeLiquidity(	
+				token0,
+				token1,
+				false,
+				amountUnderlyingLP,
+				0, //can use quote
+				0, //can use quote
+				address(this),
+				block.timestamp
+			); 
+
+			//swap for underlying desired
+
+			uint256 amountToSwap; 
+			if (token0 == underlyingToSwapFor) { 
+				amountToSwap = IERC20(token1).balanceOf(address(this)); 
+				_swapVelo(token1, token0, amountToSwap, stable); 
+			 } else {
+				amountToSwap = IERC20(token0).balanceOf(address(this)); 
+				_swapVelo(token0, token1, amountToSwap, stable); 
+			 }
+
+		} else { //BPT withdraw
+			//beethoven withdraw needed
+			//balancer API
+			//this is the only beets pool we support atm
+			//TODO: implement actual Balancer Vault ABI and interfaces 
+			bytes32 poolId = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b;
+			(IERC20[] memory poolTokens, , )= balancerVault.getPoolTokens(poolId); 
+			uint256[] memory minAmountsOut = new uint256[](2);
+			bytes memory userData = abi.encodePacked(
+				IVault.ExitKind.EXACT_BPT_IN_FOR_ONE_TOKEN_OUT
+			); 
+
+			IAsset[] memory assets = new IAsset[](2); 
+				assets[0] = IAsset(address(poolTokens[0])); 
+				assets[1] = IAsset(address(poolTokens[1])); 
+
+			IVault.ExitPoolRequest memory exitPoolRequest = IVault.ExitPoolRequest(
+				assets,
+				minAmountsOut,
+				userData,
+				false //receive ERC20
+			); 
+
+			balancerVault.exitPool(
+				poolId, 
+				address(this), 
+				payable(address(this)), 
+				exitPoolRequest
+			); 
+			//recieve WETH after exit
 		}
+	}
+	
+	//swap using velo, easiest to do, maybe not the best liquidity(?)
+	function _swapVelo(address from, address to, uint256 amountIn, bool stable) internal returns (uint256) {
+
+		address[] memory veloPath = new address[](2); 
+		veloRouter.swapExactTokensForTokensSimple(
+			amountIn,
+			0,
+			from,
+			to,
+			stable,
+			address(this), //send tokens here
+			block.timestamp //deadline
+		); 			
 	}
 
 	receive() external payable {} 

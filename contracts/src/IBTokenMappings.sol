@@ -6,6 +6,7 @@
 contract IBTokenMappings {
 
 	mapping(address => address) public tokenMappings; 
+	mapping(address => bool) public stable; 
 	address public constant WETH = 0x4200000000000000000000000000000000000006; 
 	address public constant USDC = 0x7F5c764cBc14f9669B88837ca1490cCa17c31607;  
 	
@@ -38,19 +39,38 @@ contract IBTokenMappings {
 	
 	constructor() {
 		tokenMappings[CRV_wstETH_ETH] = WETH; 
+
 		tokenMappings[VELO_wstETH_ETH] = WETH; 	
+		stable[VELO_wstETH_ETH] = false; //has more liquidity than stable pair
+
 		tokenMappings[VELO_ETH_USDC] = WETH; 	
+		stable[VELO_ETH_USDC] = false; 
+
 		tokenMappings[VELO_OP_ETH] = WETH; 	
+		stable[VELO_OP_ETH] = false;  
 
 		tokenMappings[CRV_sUSD_3CRV] = USDC; 
+
 		tokenMappings[VELO_SNX_USDC] = USDC; 	
+		stable[VELO_SNX_USDC] = false; 
+
 		tokenMappings[VELO_sUSD_USDC] = USDC; 	
+		stable[VELO_sUSD_USDC] = true; 
+
 		tokenMappings[VELO_OP_USDC] = USDC; 	
+		stable[VELO_OP_USDC] = false; 
+
 		tokenMappings[VELO_DAI_USDC] = USDC; 	
+		stable[VELO_DAI_USDC] = true;
+
 		tokenMappings[VELO_FRAX_USDC] = USDC; 	
+		stable[VELO_FRAX_USDC] = true; 
+
 		tokenMappings[VELO_USDT_USDC] = USDC; 	
-		
+		stable[VELO_USDT_USDC] = true; 
+
 	}
+
 
 
  }
