@@ -17,11 +17,14 @@ import {IVeloPair} from "./interfaces/IVeloPair.sol";
 import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
 import {IVault, IAsset} from "./interfaces/IBalancerVault.sol"; 
 
-contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase { 
+import "forge-std/Test.sol";
+
+contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test { 
 
 	ILendingPool internal lendingPool; //vmex 
+
 	IPoolAddressesProvider internal constant aaveAddressesProvider = 
-		IPoolAddressesProvider(0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e); 
+		IPoolAddressesProvider(0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb); //OP
 
 	IVeloRouter internal constant veloRouter = 
 		IVeloRouter(0x9c12939390052919aF3155f41Bf4160Fd3666A6f); 
@@ -30,6 +33,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	
 	ISwapRouter internal swapRouter = 
 		ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); //same on ETH/OP/ARB/POLY
+
 	IUniswapV3Factory internal factory =
 		IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984); 
 
@@ -41,8 +45,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 		uint24 fee; 
 		bool isIBToken; //interest bearing, i.e. vault, lp, etc
 		bool isStable; 
-		uint8 protocol; //0 = curve, 1 = beefy, 2 = beethoven
-		
+		uint8 protocol; //0 = curve, 1 = beefy, 2 = beethoven, 3 = none 
 	}
 
 	struct SwapData {
@@ -60,7 +63,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 		address user;
 		uint256 debtAmount; 		
 		SwapData swapData;
-		Path[] reswapPath;
+		Path ibPath; 
 	}
 
 
@@ -83,61 +86,54 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	//TODO check if borrowed asset is what we need, do swaps as necessary
 	FlashLoanData memory decodedParams = abi.decode(params, (FlashLoanData)); 
 	
-	//if we need to swap, this will contain the necessary tokens to swap to. If we do not need to swap, the tokens to and from will be the same. 
-	//if not the same, then we swap to the appropriate token using sushi (it's deployed on all chains, easiest imo)
+	//if we need to swap, this will contain the necessary tokens to swap to. If we do not need to swap, the tokens in swapData.to and swapData.from will be the same. 
+	//if not the same, then we swap to the appropriate token using univ3 router.
 	//this will already be set by the node script, including amountsOut
 	//
 	//
 	//reswap path is included due to the collateral potentially being a vault token, or some other interest bearing token 
 	//where extra steps are needed to repay the flashloan
 	
-	//initial swap
+	//initial swap from flashloaned token to debtAsset if debtAsset is NOT flashloanable
 	uint256 amountOut; 
 	SwapData memory swapData = decodedParams.swapData; 
 	if (swapData.to != swapData.from) { 
 		amountOut = _swap(decodedParams.swapData); 
 	}
+	console.log(amountOut); 
+	
 		
+	//TODO: mock this out later
 	//vmex liquidation			
-	lendingPool.liquidationCall(
-		decodedParams.collateralAsset,
-		decodedParams.debtAsset,
-		decodedParams.trancheId,
-		decodedParams.user,
-		decodedParams.debtAmount,
-		false //no vToken
-	); 
+	//lendingPool.liquidationCall(
+	//	decodedParams.collateralAsset,
+	//	decodedParams.debtAsset,
+	//	decodedParams.trancheId,
+	//	decodedParams.user,
+	//	decodedParams.debtAmount,
+	//	false //no vToken/aToken
+	//); 
 
-	//after liquidation, receive a single asset of collateral of amount (debtAmount + liquidation bonus)	
+	//after liquidation, receive a single asset of collateral of amount (debtAmount + liquidation bonus) in usd
 	uint256 afterLiquidationBalance = 
 		IERC20(decodedParams.collateralAsset).balanceOf(address(this)); 
 
 	//unwrap if necessary -> swap back to floashloaned token
-	//TODO: do unwraps
-		//if vault -> we use the underlying token
+	//if vault -> we use the underlying token
 	
-	if (decodedParams.reswapPath[0].isIBToken == true) {
+	if (decodedParams.ibPath.isIBToken == true) {
 		_unwrapIBToken(
 			decodedParams.collateralAsset, 
-			decodedParams.reswapPath[0].protocol
+			decodedParams.ibPath.protocol
 		); 
 	}
 	
-	//NOTE: may no longer need this, as we are unwrapping directly to the asset we flashloaned	
-	SwapData memory reswapData = SwapData({
-		to: swapData.from, 
-		from: swapData.to,
-		amount: afterLiquidationBalance, 
-		minOut: 0, 
-		path: decodedParams.reswapPath 
-	}); 	
 
-	uint256 amountAfterReswap = _swap(reswapData); 
+	uint256 amountAfterAllTxns = IERC20(asset).balanceOf(address(this));  
 	uint amountOwing = amount + premium; 
 
-	//if not profitable, we will revert
-	require(amountAfterReswap >= amountOwing); 
-
+	//if not profitable or b/e, we will revert automatically
+	require(amountAfterAllTxns >= amountOwing); 
 
     IERC20(asset).approve(address(POOL), amountOwing);
 
@@ -152,17 +148,18 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 		uint64 trancheId, 
 		address user,
 		SwapData memory swapData,
-		Path[] memory reswapPath) public {
+		Path memory ibPath) public {
 
 
 		bytes memory params = abi.encode(FlashLoanData({
-			collateralAsset: collateralAsset,
-			debtAsset: debtAsset,
-			trancheId: trancheId,
-			user: user,
-			debtAmount: amountDebt,
-			swapData: swapData,
-			reswapPath: reswapPath})
+				collateralAsset: collateralAsset,
+				debtAsset: debtAsset,
+				trancheId: trancheId,
+				user: user,
+				debtAmount: amountDebt,
+				swapData: swapData,
+				ibPath: ibPath
+			})
 		); 
 		
 		//TODO: 
@@ -190,9 +187,9 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 
 			ISwapRouter.ExactInputSingleParams memory params = 
 				ISwapRouter.ExactInputSingleParams({
-					tokenIn: swapData.from,
-					tokenOut: swapData.to,
-					fee: fee,
+					tokenIn: swapData.from, //token we have from flashloan
+					tokenOut: swapData.to, //debt asset we need
+					fee: fee, 
 					recipient: address(this),
 					deadline: block.timestamp,
 					amountIn: swapData.amount,
@@ -210,8 +207,9 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 				swapData.path[0].fee,
 				swapData.path[1].tokenIn, //WETH (probably)
 				swapData.path[1].fee,
-				swapData.to
+				swapData.to //tokenOut
 			); 
+
 			ISwapRouter.ExactInputParams memory params = 
 				ISwapRouter.ExactInputParams({
 					path: path,
@@ -252,7 +250,9 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 				IWETH(tokenMappings.WETH()).deposit{value: ethDif}(); 
 
 				amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
+
 			} else {
+				//TODO: refactor -> add hardcoded values to IBTokenMappings
 				amountUnderlyingLP = 
 					IERC20(0x061b87122Ed14b9526A813209C8a59a633257bAb).balanceOf(address(this)); 
 				ICurveFi curvePool = ICurveFi(0x061b87122Ed14b9526A813209C8a59a633257bAb); 
@@ -270,7 +270,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 			}
 
 			//curve now unwrapped to base USDC or WETH
-			
+			console.log(amountWithdrawnFromCurve); 	
 			return amountWithdrawnFromCurve; 
 
 		} else if (protocol == 1) { //velodrome
@@ -318,11 +318,14 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 			//this is the only beets pool we support atm
 			//TODO: implement actual Balancer Vault ABI and interfaces 
 			bytes32 poolId = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b;
-			(IERC20[] memory poolTokens, , )= balancerVault.getPoolTokens(poolId); 
+			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
 			uint256[] memory minAmountsOut = new uint256[](2);
+			uint256 exitTokenIndex = 1; //WETH
 			bytes memory userData = abi.encodePacked(
-				IVault.ExitKind.EXACT_BPT_IN_FOR_ONE_TOKEN_OUT
-			); 
+				IVault.ExitKind.EXACT_BPT_IN_FOR_ONE_TOKEN_OUT,
+				IERC20(collateralAsset).balanceOf(address(this)),
+				exitTokenIndex	
+			);
 
 			IAsset[] memory assets = new IAsset[](2); 
 				assets[0] = IAsset(address(poolTokens[0])); 

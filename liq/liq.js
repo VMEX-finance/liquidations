@@ -1,17 +1,23 @@
 const Web3 = require("web3"); 
 require('dotenv').config(); 
 const axios = require('axios'); 
-const web3 = new Web3(process.env.GOERLI_RPC); 
-
+const web3 = new Web3(process.env.OP_RPC); 
+const ethers = require("ethers"); //@5.7.2
+const { AlphaRouter, SwapType } = require("@uniswap/smart-order-router"); 
+const uniswap = require("@uniswap/sdk-core"); 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
+const provider = new ethers.providers.InfuraProvider('optimism'); 
 const lending_pool_address = "0xdff58B48df141BCb86Ba6d06EEaABF02Ef45C528"; 
 const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
+const erc20Abi = require("./contracts/erc20Abi.json"); 
 
 const lendingPool = new web3.eth.Contract(
 	lending_pool_abi,
 	lending_pool_address
 ); 
+
+const genericUniPoolAbi = require("./contracts/poolAbi.json"); 
 
 		//needed: 
 			//collateralAsset;  //aToken >> get
@@ -20,9 +26,16 @@ const lendingPool = new web3.eth.Contract(
 			//user; //already have >> get
 			//debtAmount; //currentVariableDebt >> get? 
 
+const router = new AlphaRouter({
+	chainId: 10,
+	provider: provider
+}); 
+
 //main entry
 async function main() {
 	const liquidatable = await getLiquidatableAccounts(); 	
+	console.log(liquidatable); 
+	let params01; 
 	for (let i = 0; i < liquidatable.length; i ++) {
 		let liq_params = {
 			collateralAsset: liquidatable[i].collateralAsset,
@@ -32,13 +45,117 @@ async function main() {
 			debtAmount: liquidatable[i].debtAmount
 		}; 
 		console.log(liq_params); 
+		params01 = liq_params; 
 	}
 	
 	//TODO; 
+	//buildRoute(params01); 
+	//console.log(params01); 
 	//pass data to liquidation smart contract
 }
 
 main(); 
+
+function checkIfDirectFlashloanExists(inputToken) {
+	//lookup the list of available aave flashloans (off-chain)	
+	//get back relevant data
+}
+
+async function buildRoute() {		
+	const options = {
+		recipient: "0xbF43260Bb34daF3BA6F1fD8C3BE31c3Bb48Bdf49",
+		slippageTolerance: new uniswap.Percent(100, 10_000),
+		deadline: Math.floor(Date.now() / 1000 + 1800),
+		type: SwapType.SWAP_ROUTER_02
+	}
+	
+	//TODO: this needs to be flashloaned asset
+	//test, we use WETH
+	//TODO: check this works with dif decimals
+	const tokenIn = await getToken("0x4200000000000000000000000000000000000006");  //WETH
+	const tokenOut = await getToken("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"); //DAI
+	const wei = 1e18;
+	const amount = wei.toString(); 
+	
+	//swapping from flashloaned asset to debtAsset, if they are the same, we just return the same two tokens set as a route and decode in contract
+	//route used to swap 
+	const route = await router.route(
+		uniswap.CurrencyAmount.fromRawAmount(tokenIn, amount),
+		tokenOut,
+		uniswap.TradeType.EXACT_INPUT,
+		options
+	); 
+	
+	const params = await buildParams(route.route, tokenIn.decimals, tokenOut.decimals); 
+
+}
+
+//buildRoute(); 
+
+//NOTE: if there is only a single hop, we want the path array to be a length of 1
+async function buildParams(route, decimalsIn, decimalsOut) {
+	//receives the route and returns an object that is specific for liquidation contract
+	//params needed:
+	//	- amountIn
+	//	- tokenIn
+	//	- tokenOut
+	//	- fee
+	//	- minOut
+	//	- path
+	const amountIn = route[0].amount.toSignificant(decimalsIn) * (10 ** decimalsIn); 
+	const tokenIn = route[0].route.input.address;
+	const tokenOut = route[0].route.output.address;
+	const minOut = route[0].quoteAdjustedForGas.toSignificant(decimalsOut) * (10 ** decimalsOut);   
+	const pools = route[0].poolAddresses; 
+	const fees = await getFeesFromPoolAddress(pools); 
+	
+
+	return {
+		amountIn: amountIn,
+		tokenIn: tokenIn, 
+		tokenOut: tokenOut,
+		fees: fees,
+		minOut: minOut,
+		path: pools,
+	};
+}
+
+async function getFeesFromPoolAddress(pools) {
+	const poolLength = pools.length; 
+	const fees = []; 
+	for (let i = 0; i < poolLength; i++) {
+		const poolContract = new web3.eth.Contract(
+			genericUniPoolAbi,
+			pools[i]
+		);
+
+		const fee = await poolContract.methods.fee().call(); 
+		fees.push(fee); 
+	}	
+
+	return fees; 
+}
+
+
+async function getToken(tokenIn) {
+	//token address
+	//token decimals
+	//token symbol
+	//token name
+	const tokenContract = new web3.eth.Contract(
+		erc20Abi,
+		tokenIn
+	); 
+
+	const decimals = await tokenContract.methods.decimals().call(); 
+	const symbol = await tokenContract.methods.symbol().call(); 
+	const name = await tokenContract.methods.name().call(); 
+
+	const token = new uniswap.Token(10, tokenIn, Number(decimals), symbol, name); 
+	return token;
+
+}
+
 
 //instead of looping through every user, we should probably just get active borrows
 async function getLiquidatableAccounts() {
