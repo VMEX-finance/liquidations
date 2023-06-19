@@ -16,14 +16,17 @@ interface IVault {
     }
 
 	enum ExitKind {
-		EXACT_BPT_IN_FOR_ONE_TOKEN_OUT
+	    EXACT_BPT_IN_FOR_ONE_TOKEN_OUT,
+	    EXACT_BPT_IN_FOR_TOKENS_OUT,
+	    BPT_IN_FOR_EXACT_TOKENS_OUT,
+	    MANAGEMENT_FEE_TOKENS_OUT // for InvestmentPool
 	}
 
 	function exitPool(
         bytes32 poolId,
         address sender,
         address payable recipient,
-        ExitPoolRequest memory request
+        IVault.ExitPoolRequest memory request
     ) external;
 
 	function getPoolTokens(bytes32 poolId)

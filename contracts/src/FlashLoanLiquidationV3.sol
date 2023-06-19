@@ -44,7 +44,6 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		address tokenIn;
 		uint24 fee; 
 		bool isIBToken; //interest bearing, i.e. vault, lp, etc
-		bool isStable; 
 		uint8 protocol; //0 = curve, 1 = beefy, 2 = beethoven, 3 = none 
 	}
 
@@ -100,7 +99,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	if (swapData.to != swapData.from) { 
 		amountOut = _swap(decodedParams.swapData); 
 	}
-	console.log(amountOut); 
+	console.log("amount after initial swap:", amountOut); 
 	
 		
 	//TODO: mock this out later
@@ -270,7 +269,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			}
 
 			//curve now unwrapped to base USDC or WETH
-			console.log(amountWithdrawnFromCurve); 	
+			console.log("amount from curve:", amountWithdrawnFromCurve); 	
 			return amountWithdrawnFromCurve; 
 
 		} else if (protocol == 1) { //velodrome
@@ -290,6 +289,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			(address token0, address token1) = IVeloPair(underlyingLP).tokens(); 
 			
 			//remove liquidity via router
+			IERC20(underlyingLP).approve(address(veloRouter), amountUnderlyingLP); 
 			veloRouter.removeLiquidity(	
 				token0,
 				token1,
@@ -302,7 +302,6 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			); 
 
 			//swap for underlying desired
-
 			uint256 amountToSwap; 
 			if (token0 == underlyingToSwapFor) { 
 				amountToSwap = IERC20(token1).balanceOf(address(this)); 
@@ -312,31 +311,41 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 				_swapVelo(token0, token1, amountToSwap, stable); 
 			 }
 
+			 console.log(IERC20(underlyingToSwapFor).balanceOf(address(this))); 
+
 		} else { //BPT withdraw
 			//beethoven withdraw needed
 			//balancer API
 			//this is the only beets pool we support atm
-			//TODO: implement actual Balancer Vault ABI and interfaces 
+			
 			bytes32 poolId = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b;
 			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
 			uint256[] memory minAmountsOut = new uint256[](2);
 			uint256 exitTokenIndex = 1; //WETH
-			bytes memory userData = abi.encodePacked(
+					
+			IERC20(collateralAsset).approve(
+				address(balancerVault),
+				IERC20(collateralAsset).balanceOf(address(this))
+			); 
+
+			bytes memory userData = abi.encode(
 				IVault.ExitKind.EXACT_BPT_IN_FOR_ONE_TOKEN_OUT,
 				IERC20(collateralAsset).balanceOf(address(this)),
 				exitTokenIndex	
 			);
 
+			emit log_named_bytes("user data", userData); 
+
 			IAsset[] memory assets = new IAsset[](2); 
 				assets[0] = IAsset(address(poolTokens[0])); 
 				assets[1] = IAsset(address(poolTokens[1])); 
 
-			IVault.ExitPoolRequest memory exitPoolRequest = IVault.ExitPoolRequest(
-				assets,
-				minAmountsOut,
-				userData,
-				false //receive ERC20
-			); 
+			IVault.ExitPoolRequest memory exitPoolRequest = IVault.ExitPoolRequest({
+				assets: assets,
+				minAmountsOut: minAmountsOut,
+				userData: userData,
+				toInternalBalance: false //receive ERC20
+			}); 
 
 			balancerVault.exitPool(
 				poolId, 
@@ -351,6 +360,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	//swap using velo, easiest to do, maybe not the best liquidity(?)
 	function _swapVelo(address from, address to, uint256 amountIn, bool stable) internal returns (uint256) {
 
+
+		IERC20(from).approve(address(veloRouter), amountIn); 
 		address[] memory veloPath = new address[](2); 
 		veloRouter.swapExactTokensForTokensSimple(
 			amountIn,

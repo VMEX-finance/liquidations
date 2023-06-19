@@ -23,4 +23,16 @@ interface IVeloRouter {
         uint deadline
     ) external returns (uint[] memory amounts); 
 
+	function addLiquidity(
+        address tokenA,
+        address tokenB,
+        bool stable,
+        uint amountADesired,
+        uint amountBDesired,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountA, uint amountB, uint liquidity); 
+
 }
