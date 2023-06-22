@@ -5,6 +5,7 @@ const web3 = new Web3(process.env.OP_RPC);
 const ethers = require("ethers"); //@5.7.2
 const { AlphaRouter, SwapType } = require("@uniswap/smart-order-router"); 
 const uniswap = require("@uniswap/sdk-core"); 
+const ibTokens = require("./ibTokenList.js"); 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
 const provider = new ethers.providers.InfuraProvider('optimism'); 
@@ -32,29 +33,26 @@ const router = new AlphaRouter({
 }); 
 
 //main entry
+//currently, we take out a flashloan in debt asset, regardless of whether or not it is actually flashloanable on AAVE
+//TODO: finish checkIfDirectFlashloanExists()
 async function main() {
 	const liquidatable = await getLiquidatableAccounts(); 	
 	console.log(liquidatable); 
-	let params01; 
 	for (let i = 0; i < liquidatable.length; i ++) {
-		let liq_params = {
+		let liqParams = {
 			collateralAsset: liquidatable[i].collateralAsset,
 			debtAsset: liquidatable[i].debtAsset,
 			trancheId: liquidatable[i].tranche,
 			user: liquidatable[i].user,
 			debtAmount: liquidatable[i].debtAmount
 		}; 
-		console.log(liq_params); 
-		params01 = liq_params; 
+		const swapData = buildRoute(liqParams); 
+		liqParams.swapData = swapData; 	
+		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); 
 	}
-	
-	//TODO; 
-	//buildRoute(params01); 
-	//console.log(params01); 
-	//pass data to liquidation smart contract
 }
 
-main(); 
+//main(); 
 
 function checkIfDirectFlashloanExists(inputToken) {
 	//lookup the list of available aave flashloans (off-chain)	
@@ -69,9 +67,7 @@ async function buildRoute() {
 		type: SwapType.SWAP_ROUTER_02
 	}
 	
-	//TODO: this needs to be flashloaned asset
-	//test, we use WETH
-	//TODO: check this works with dif decimals
+	//TODO: remove test tokens (after live)
 	const tokenIn = await getToken("0x4200000000000000000000000000000000000006");  //WETH
 	const tokenOut = await getToken("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"); //DAI
 	const wei = 1e18;
@@ -85,12 +81,14 @@ async function buildRoute() {
 		uniswap.TradeType.EXACT_INPUT,
 		options
 	); 
-	
 	const params = await buildParams(route.route, tokenIn.decimals, tokenOut.decimals); 
-
+	console.log(params); 
+	return params; 
 }
 
-//buildRoute(); 
+buildRoute(); 
+
+module.exports = { buildRoute }; 
 
 //NOTE: if there is only a single hop, we want the path array to be a length of 1
 async function buildParams(route, decimalsIn, decimalsOut) {
@@ -108,17 +106,57 @@ async function buildParams(route, decimalsIn, decimalsOut) {
 	const minOut = route[0].quoteAdjustedForGas.toSignificant(decimalsOut) * (10 ** decimalsOut);   
 	const pools = route[0].poolAddresses; 
 	const fees = await getFeesFromPoolAddress(pools); 
-	
 
-	return {
-		amountIn: amountIn,
-		tokenIn: tokenIn, 
+	//console.log(route[0].tokenPath[0]); 
+
+	const params = {
+		tokenIn: tokenIn,
 		tokenOut: tokenOut,
-		fees: fees,
+		amountIn: amountIn,
 		minOut: minOut,
-		path: pools,
-	};
+		path: []
+	}
+	//if there is more than one token in the path, we need to get the fee for the associated pool
+	if (pools.length >= 2) {
+		for (let i = 0; i < pools.length; i++) {
+			let path = {
+				tokenIn: route[0].tokenPath[i],
+				fee: fees[i],
+				isIBToken: false, //always false here
+				protocol: 3 //none
+			};
+			params.path.push(path); 
+		}
+	} else {
+		params.path[0].tokenIn = tokenIn; 
+		params.path[0].fee = fees[0];
+		params.path[0].isIBToken = false; //always false here
+		params.path[0].protocol = 3; //none
+	}
+	
+	return params; 
 }
+
+async function buildIBPath(token) {
+	const ibTokenList = ibTokens.ibTokens; 	
+	let path = {}; 
+	if (ibTokenList[token.toString()] != undefined) {
+		path.tokenIn = token; 
+		path.fee = 0; 
+		path.isIBToken = true;
+		path.protocol = ibTokenList[token.toString()]; 
+	} else {
+		//ignored by flashloan
+		path.tokenIn = token; 
+		path.fee = 0; 
+		path.isIBToken = false;
+		path.protocol = 3; //none 
+	}
+	
+	return path; 
+}
+
+//buildIBPath("0x0892a178c363b4739e5Ac89E9155B9c30214C0c0"); 
 
 async function getFeesFromPoolAddress(pools) {
 	const poolLength = pools.length; 
@@ -185,8 +223,6 @@ async function getLiquidatableAccounts() {
 
 //getLiquidatableAccounts(); 
 
-//this one is much better, there are still some repeats, but much cleaner
-//TODO: (time permitting) fix repeats 
 async function getTrancheDatas() {
 	let availableUsers = []; 
 
@@ -275,6 +311,5 @@ async function getHealthFactor(user, tranche) {
 	const healthFactor = accountData[5]; 
 	return healthFactor; 
 }
-
 
 
