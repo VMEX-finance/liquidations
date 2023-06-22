@@ -1,22 +1,30 @@
-const Web3 = require("web3"); 
+const Web3 = require('web3'); 
 require('dotenv').config(); 
 const axios = require('axios'); 
 const web3 = new Web3(process.env.OP_RPC); 
-const ethers = require("ethers"); //@5.7.2
-const { AlphaRouter, SwapType } = require("@uniswap/smart-order-router"); 
+const ethers = require('ethers'); //@5.7.2
+const { AlphaRouter, SwapType } = require('@uniswap/smart-order-router'); 
 const uniswap = require("@uniswap/sdk-core"); 
-const ibTokens = require("./ibTokenList.js"); 
+const constants = require("./constants.js"); 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
 const provider = new ethers.providers.InfuraProvider('optimism'); 
-const lending_pool_address = "0xdff58B48df141BCb86Ba6d06EEaABF02Ef45C528"; 
+const lending_pool_address = "0xdff58B48df141BCb86Ba6d06EEaABF02Ef45C528"; //GOERLI TODO: replace with mainnet address
 const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
+const flashloanLiquidationAbi = require('./contracts/FlashLoanLiquidation.json'); 
+const flashloanLiquidationAddress = ""; //TODO: add mainnet address to call flashloan function
+
 const erc20Abi = require("./contracts/erc20Abi.json"); 
 
 const lendingPool = new web3.eth.Contract(
 	lending_pool_abi,
 	lending_pool_address
 ); 
+
+const flashloanLiquidation = new web3.eth.Contract(
+	flashloanLiquidationAbi,
+	flashloanLiquidationAddress
+);
 
 const genericUniPoolAbi = require("./contracts/poolAbi.json"); 
 
@@ -33,31 +41,61 @@ const router = new AlphaRouter({
 }); 
 
 //main entry
-//currently, we take out a flashloan in debt asset, regardless of whether or not it is actually flashloanable on AAVE
-//TODO: finish checkIfDirectFlashloanExists()
 async function main() {
 	const liquidatable = await getLiquidatableAccounts(); 	
-	console.log(liquidatable); 
 	for (let i = 0; i < liquidatable.length; i ++) {
 		let liqParams = {
 			collateralAsset: liquidatable[i].collateralAsset,
 			debtAsset: liquidatable[i].debtAsset,
+			debtAmount: liquidatable[i].debtAmount
 			trancheId: liquidatable[i].tranche,
 			user: liquidatable[i].user,
-			debtAmount: liquidatable[i].debtAmount
 		}; 
-		const swapData = buildRoute(liqParams); 
+		const swapData = buildRoute(liqParams); //includes any swap path needed to swap from flashloaned asset to debt asset to perform the liquidation
 		liqParams.swapData = swapData; 	
-		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); 
+		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
+
+		let exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
+		if (exists == false) {
+			//if this is false, we want the loan to be either in WETH or USDC, depending on whether it is a stablecoin or not
+			//TODO: need lookup for weth/usdc value like in ibTokenMapping
+			await flashloanLiquidation.methods.flashLoanCall(
+				liqParams.collateralAsset,
+				liqParams.debtAsset,
+				liqParams.debtAmount,
+				liqParams.trancheId,
+				liqParams.user,
+				liqParams.swapData,
+				liqParams.ibPath
+			);
+		} else {
+			//call flashloan using debt asset as flashloanable 	
+			await flashloanLiquidation.methods.flashLoanCall(
+				liqParams.collateralAsset,
+				liqParams.debtAsset,
+				liqParams.debtAmount,
+				liqParams.trancheId,
+				liqParams.user,
+				liqParams.swapData,
+				liqParams.ibPath
+			);
+		}
 	}
 }
 
 //main(); 
 
 function checkIfDirectFlashloanExists(inputToken) {
-	//lookup the list of available aave flashloans (off-chain)	
-	//get back relevant data
+	let exists = false; 
+	for (let i = 0; i < flashloanable.flashloanableTokens.length; i++) {
+		if (flashloanable.flashloanableTokens[i].toLowerCase() == inputToken.toLowerCase()) {	
+			exists = true; 		
+		}
+	}
+	return exists; 
 }
+
+//checkIfDirectFlashloanExists("0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb"); 
 
 async function buildRoute() {		
 	const options = {
@@ -86,7 +124,7 @@ async function buildRoute() {
 	return params; 
 }
 
-buildRoute(); 
+//buildRoute(); 
 
 module.exports = { buildRoute }; 
 
@@ -138,7 +176,7 @@ async function buildParams(route, decimalsIn, decimalsOut) {
 }
 
 async function buildIBPath(token) {
-	const ibTokenList = ibTokens.ibTokens; 	
+	const ibTokenList = constants.ibTokens; 
 	let path = {}; 
 	if (ibTokenList[token.toString()] != undefined) {
 		path.tokenIn = token; 

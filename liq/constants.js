@@ -13,7 +13,21 @@ const ibTokens = {
 	"0x0495a700407975b2641Fa61Aef5Ccd0106F525Cc": 2
 };
 
-module.exports = { ibTokens }; 
+
+const flashloanableTokens = [
+	"0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", //dai
+	"0xc40F949F8a4e094D1b49a23ea9241D289B7b2819", //lusd
+	"0xdFA46478F9e5EA86d57387849598dbFB2e964b02", //mai
+	"0x8c6f28f2F1A3C87F0f938b96d27520d9751ec8d9", //susd
+	"0x7F5c764cBc14f9669B88837ca1490cCa17c31607", //usdc
+	"0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", //usdt
+	"0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6", //link
+	"0x68f180fcCe6836688e9084f035309E29Bf0A2095", //wbtc
+	"0x4200000000000000000000000000000000000006", //weth
+	"0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb" //wsteth
+]; 
+
+module.exports = { ibTokens, flashloanableTokens }; 
 
 
 
