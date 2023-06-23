@@ -61,7 +61,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		uint64 trancheId; 
 		address user;
 		uint256 debtAmount; 		
-		SwapData swapData;
+		SwapData swapBeforeFlashloan;
+		swapData swapAfterFlashloan; 
 		Path ibPath; 
 	}
 
@@ -95,9 +96,9 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	
 	//initial swap from flashloaned token to debtAsset if debtAsset is NOT flashloanable
 	uint256 amountOut; 
-	SwapData memory swapData = decodedParams.swapData; 
-	if (swapData.to != swapData.from) { 
-		amountOut = _swap(decodedParams.swapData); 
+	SwapData memory swapBeforeFlashloan = decodedParams.swapBeforeFlashloan; 
+	if (swapBeforeFlashloan.to != swapBeforeFlashloan.from) { 
+		amountOut = _swap(decodedParams.swapBeforeFlashloan); 
 	}
 	console.log("amount after initial swap:", amountOut); 
 	
@@ -126,6 +127,12 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			decodedParams.ibPath.protocol
 		); 
 	}
+
+	
+	if (decodedParams.collateralAsset != decodedParams.debtAsset) {
+		//TODO: handle cases where we need to swap back to debt asset from collateral asset
+		_swap(decodedParams.swapAfterFlashloan); 
+	}
 	
 
 	uint256 amountAfterAllTxns = IERC20(asset).balanceOf(address(this));  
@@ -146,7 +153,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		uint256 amountDebt,
 		uint64 trancheId, 
 		address user,
-		SwapData memory swapData,
+		SwapData memory swapBeforeFlashloan,
+		SwapData memory swapAfterFlashloan,
 		Path memory ibPath) public {
 
 
@@ -156,15 +164,13 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 				trancheId: trancheId,
 				user: user,
 				debtAmount: amountDebt,
-				swapData: swapData,
+				swapBeforeFlashloan: swapBeforeFlashloan,
+				swapAfterFlashloan: swapAfterFlashloan,
 				ibPath: ibPath
 			})
 		); 
-		
-		//TODO: 
-		//ensure that USDC or WETH only is used to flashloan
-
-		//flashloans will only ever be in USDC or WETH
+			
+		//keeping in mind that debtAsset here may not actually be the actual debt asset until after the swap has occurred	
 		POOL.flashLoanSimple(
 			address(this), //receiver
 			debtAsset,
@@ -200,7 +206,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			return amountOut; 
 
 		} else {
-
+			
+			//TODO: this is assumed, but may not always be the case, double check this with more complex paths
 			bytes memory path = abi.encodePacked(
 				swapData.path[0].tokenIn,
 				swapData.path[0].fee,

@@ -4,8 +4,10 @@ const axios = require('axios');
 const web3 = new Web3(process.env.OP_RPC); 
 const ethers = require('ethers'); //@5.7.2
 const { AlphaRouter, SwapType } = require('@uniswap/smart-order-router'); 
-const uniswap = require("@uniswap/sdk-core"); 
-const constants = require("./constants.js"); 
+const uniswap = require('@uniswap/sdk-core'); 
+const constants = require('./periphery/constants.js'); 
+const converter = require('./periphery/priceConverter.js'); 
+const testData = require('./test/mock_liquidation_data.js'); 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
 const provider = new ethers.providers.InfuraProvider('optimism'); 
@@ -28,59 +30,72 @@ const flashloanLiquidation = new web3.eth.Contract(
 
 const genericUniPoolAbi = require("./contracts/poolAbi.json"); 
 
-		//needed: 
-			//collateralAsset;  //aToken >> get
-			//debtAsset; //currentBorrows >> get? kinda
-			//trancheId; >> get
-			//user; //already have >> get
-			//debtAmount; //currentVariableDebt >> get? 
-
 const router = new AlphaRouter({
 	chainId: 10,
 	provider: provider
 }); 
 
 //main entry
+//TODO: refactor:: move peripheral and helper functions to another file
 async function main() {
 	const liquidatable = await getLiquidatableAccounts(); 	
 	for (let i = 0; i < liquidatable.length; i ++) {
 		let liqParams = {
 			collateralAsset: liquidatable[i].collateralAsset,
 			debtAsset: liquidatable[i].debtAsset,
-			debtAmount: liquidatable[i].debtAmount
+			debtAmount: liquidatable[i].debtAmount,
 			trancheId: liquidatable[i].tranche,
-			user: liquidatable[i].user,
+			user: liquidatable[i].user
 		}; 
-		const swapData = buildRoute(liqParams); //includes any swap path needed to swap from flashloaned asset to debt asset to perform the liquidation
-		liqParams.swapData = swapData; 	
-		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
 
-		let exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
+		const swapTo = liqParams.debtAsset; 
+
+		//if this is false, we want the loan to be in WETH
+		const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
 		if (exists == false) {
-			//if this is false, we want the loan to be either in WETH or USDC, depending on whether it is a stablecoin or not
-			//TODO: need lookup for weth/usdc value like in ibTokenMapping
-			await flashloanLiquidation.methods.flashLoanCall(
-				liqParams.collateralAsset,
-				liqParams.debtAsset,
-				liqParams.debtAmount,
-				liqParams.trancheId,
-				liqParams.user,
-				liqParams.swapData,
-				liqParams.ibPath
-			);
-		} else {
-			//call flashloan using debt asset as flashloanable 	
-			await flashloanLiquidation.methods.flashLoanCall(
-				liqParams.collateralAsset,
-				liqParams.debtAsset,
-				liqParams.debtAmount,
-				liqParams.trancheId,
-				liqParams.user,
-				liqParams.swapData,
-				liqParams.ibPath
-			);
+			liqParams.debtAsset = WETH; //TODO add address
+			//convert debtAmount to amount in WETH + 5%
+			liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
 		}
+			
+		//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token
+		//cases where debtAsset === swapTo are handled in the contract
+		const swapBeforeFlashloan = buildRoute(liqParams.debtAsset, swapTo, liqParams.debtAmount); 
+		const swapAfterFlashloan = buildRoute(liqParams.collateralAsset, liqParams.debtAsset, liqParams.debtAmount); //not sure if amount actually really matters? 
+		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
+		liqParams.swapBeforeFlashloan = swapBeforeFlashloan; 	
+		liqParams.swapAfterFlashloan = swapAfterFlashloan; 
+
+		await flashloanLiquidation.methods.flashLoanCall(
+			liqParams.collateralAsset,
+			liqParams.debtAsset,
+			liqParams.debtAmount,
+			liqParams.trancheId,
+			liqParams.user,
+			liqParams.swapBeforeFlashloan,
+			liqParams.swapAfterFlashloan,
+			liqParams.ibPath
+		);
 	}
+}
+
+//for testing the contract w/o data from subgraph
+async function mainTest() {
+		//if this is false, we want the loan to be in WETH
+		const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
+		if (exists == false) {
+			liqParams.debtAsset = WETH; //TODO add address
+			//convert debtAmount to amount in WETH + 5%
+			liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
+		}
+			
+		//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token
+		//cases where debtAsset === swapTo are handled in the contract
+		const swapBeforeFlashloan = buildRoute(liqParams.debtAsset, swapTo, liqParams.debtAmount); 
+		const swapAfterFlashloan = buildRoute(liqParams.collateralAsset, liqParams.debtAsset, liqParams.debtAmount); //not sure if amount actually really matters? 
+		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
+		liqParams.swapBeforeFlashloan = swapBeforeFlashloan; 	
+		liqParams.swapAfterFlashloan = swapAfterFlashloan; 
 }
 
 //main(); 
@@ -97,7 +112,8 @@ function checkIfDirectFlashloanExists(inputToken) {
 
 //checkIfDirectFlashloanExists("0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb"); 
 
-async function buildRoute() {		
+async function buildRoute(tokenIn, tokenOut, amount) {		
+	//for slippage calc only  
 	const options = {
 		recipient: "0xbF43260Bb34daF3BA6F1fD8C3BE31c3Bb48Bdf49",
 		slippageTolerance: new uniswap.Percent(100, 10_000),
