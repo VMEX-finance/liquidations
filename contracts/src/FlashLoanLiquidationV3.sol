@@ -58,11 +58,11 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	struct FlashLoanData {
 		address collateralAsset;  
 		address debtAsset;
+		uint256 debtAmount; 		
 		uint64 trancheId; 
 		address user;
-		uint256 debtAmount; 		
 		SwapData swapBeforeFlashloan;
-		swapData swapAfterFlashloan; 
+		SwapData swapAfterFlashloan; 
 		Path ibPath; 
 	}
 
@@ -147,34 +147,14 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
   }
 	
 	//bot passes these params in
-	function flashLoanCall(
-		address collateralAsset, 
-		address debtAsset,
-		uint256 amountDebt,
-		uint64 trancheId, 
-		address user,
-		SwapData memory swapBeforeFlashloan,
-		SwapData memory swapAfterFlashloan,
-		Path memory ibPath) public {
-
-
-		bytes memory params = abi.encode(FlashLoanData({
-				collateralAsset: collateralAsset,
-				debtAsset: debtAsset,
-				trancheId: trancheId,
-				user: user,
-				debtAmount: amountDebt,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			})
-		); 
-			
+	function flashLoanCall(FlashLoanData memory data) public {	
 		//keeping in mind that debtAsset here may not actually be the actual debt asset until after the swap has occurred	
+	
+		bytes memory params = abi.encode(data); 
 		POOL.flashLoanSimple(
 			address(this), //receiver
-			debtAsset,
-			amountDebt, 
+			data.debtAsset,
+			data.debtAmount, 
 			params, 
 			0 //referral code
 		); 

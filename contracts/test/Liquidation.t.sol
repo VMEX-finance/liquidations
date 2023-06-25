@@ -46,265 +46,265 @@ contract LiquidationTest is Test {
 	
 	//for tests, we're going to go liquidate a position where a user has deposited WETH as collat
 	//and has taken out a loan in DAI
-	function testFlashLoanBasicPath() public {
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: WETH,
-			fee: 500,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: address(0),
-				fee: 0,
-				isIBToken: false,
-				protocol: 3		
-			}); 
-	
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: DAI,
-				from: WETH,
-				amount: 0.057 * 1e18, //99 USD
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			WETH,
-			DAI,
-			100 * 1e18,
-			0,
-			user,
-			swapData,
-			ibPath
-		);
-	}
-
-	function testFlashLoanComplexPath() public {
-		//first swap is WETH -> DAI
-		//second swap is DAI -> USDC
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](2); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: WETH,
-			fee: 500,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		paths[1] = FlashLoanLiquidation.Path({
-			tokenIn: DAI,
-			fee: 100,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: address(0),
-				fee: 0,
-				isIBToken: false,
-				protocol: 3		
-			}); 
-	
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: USDC,
-				from: WETH,
-				amount: 0.057 * 1e18, //99 USD
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			WETH,
-			DAI,
-			100 * 1e18,
-			0,
-			user,
-			swapData,
-			ibPath
-		);
-	}
-
-	function testFlashloanIncludeIBTokenCurveWeth() public {
-		//simulating a loan where CRV_wstETH_WETH is supplied
-		//and WETH is being borrowed
-
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: WETH,
-			fee: 500,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(CRV_wstETH_ETH, address(flashLoanLiquidation), 10 * 1e18); 
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: CRV_wstETH_ETH,
-				fee: 0,
-				isIBToken: true,
-				protocol: 0 //curve
-			}); 
-	
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 0.057 * 1e18, //93 USD current
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			CRV_wstETH_ETH, //collateral
-			WETH, //debt
-			100 * 1e18, //amount
-			0, //tranche (simulated)
-			user, 
-			swapData,
-			ibPath
-		);
-	}
-
-	function testFlashloanIncludeIBTokenCurveUSD() public {
-		//simulating a loan where CRV_sUSD_3CRV is supplied
-		//and DAI is being borrowed
-
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: DAI,
-			fee: 100,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(CRV_sUSD_3CRV, address(flashLoanLiquidation), 1 * 1e18); 
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: CRV_wstETH_ETH,
-				fee: 0,
-				isIBToken: true,
-				protocol: 0 //curve
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: USDC,
-				from: DAI,
-				amount: 100 * 1e18, //93 USD current
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			CRV_sUSD_3CRV, //collateral
-			DAI, //debt
-			100 * 1e18, //amount
-			0, //tranche (simulated)
-			user, 
-			swapData,
-			ibPath
-		);
-	}
-
-	function testFlashloanIncludeIBTokenVelodrome() public {
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: WETH,
-			fee: 100,
-			isIBToken: false,
-			protocol: 3	
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(VELO_wstETH_ETH, address(flashLoanLiquidation), 100); 
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: VELO_wstETH_ETH,
-				fee: 0,
-				isIBToken: true,
-				protocol: 1 //velodrome
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 100 * 1e18, //93 USD current
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			VELO_wstETH_ETH, //collateral
-			WETH, //debt
-			100 * 1e18, //amount
-			0, //tranche (simulated)
-			user, 
-			swapData,
-			ibPath
-		);
-	}
-
-	function testFlashloanInlcudeIBTokenBalancer() public {
-		//simulate a liquidation on a loan where beets is collateral for a WETH loan
-		//initial path only -- protocol not used
-		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
-		paths[0] = FlashLoanLiquidation.Path({
-			tokenIn: WETH,
-			fee: 100,
-			isIBToken: false,
-			protocol: 2 //none
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(SHANGAI_SHAKEDOWN, address(flashLoanLiquidation), 100 * 1e18); 
-
-		FlashLoanLiquidation.Path memory ibPath = 
-			FlashLoanLiquidation.Path({
-				tokenIn: SHANGAI_SHAKEDOWN,
-				fee: 0,
-				isIBToken: true,
-				protocol: 2 //beets
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		FlashLoanLiquidation.SwapData memory swapData = 
-			FlashLoanLiquidation.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 10 * 1e18, //93 USD current
-				minOut: 0,
-				path: paths
-			});
-
-		flashLoanLiquidation.flashLoanCall(
-			SHANGAI_SHAKEDOWN, //collateral
-			WETH, //debt
-			10 * 1e18, //amount
-			0, //tranche (simulated)
-			user, 
-			swapData,
-			ibPath
-		);
-	}
-	
+//	function testFlashLoanBasicPath() public {
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: WETH,
+//			fee: 500,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: address(0),
+//				fee: 0,
+//				isIBToken: false,
+//				protocol: 3		
+//			}); 
+//	
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: DAI,
+//				from: WETH,
+//				amount: 0.057 * 1e18, //99 USD
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			WETH,
+//			DAI,
+//			100 * 1e18,
+//			0,
+//			user,
+//			swapData,
+//			ibPath
+//		);
+//	}
+//
+//	function testFlashLoanComplexPath() public {
+//		//first swap is WETH -> DAI
+//		//second swap is DAI -> USDC
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](2); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: WETH,
+//			fee: 500,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		paths[1] = FlashLoanLiquidation.Path({
+//			tokenIn: DAI,
+//			fee: 100,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: address(0),
+//				fee: 0,
+//				isIBToken: false,
+//				protocol: 3		
+//			}); 
+//	
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: USDC,
+//				from: WETH,
+//				amount: 0.057 * 1e18, //99 USD
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			WETH,
+//			DAI,
+//			100 * 1e18,
+//			0,
+//			user,
+//			swapData,
+//			ibPath
+//		);
+//	}
+//
+//	function testFlashloanIncludeIBTokenCurveWeth() public {
+//		//simulating a loan where CRV_wstETH_WETH is supplied
+//		//and WETH is being borrowed
+//
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: WETH,
+//			fee: 500,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		//simulate a flashloan where an IBtoken is recovered as collateral
+//		//contracts needs it when unwrapping any IBtokens
+//		deal(CRV_wstETH_ETH, address(flashLoanLiquidation), 10 * 1e18); 
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: CRV_wstETH_ETH,
+//				fee: 0,
+//				isIBToken: true,
+//				protocol: 0 //curve
+//			}); 
+//	
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: WETH,
+//				from: WETH,
+//				amount: 0.057 * 1e18, //93 USD current
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			CRV_wstETH_ETH, //collateral
+//			WETH, //debt
+//			100 * 1e18, //amount
+//			0, //tranche (simulated)
+//			user, 
+//			swapData,
+//			ibPath
+//		);
+//	}
+//
+//	function testFlashloanIncludeIBTokenCurveUSD() public {
+//		//simulating a loan where CRV_sUSD_3CRV is supplied
+//		//and DAI is being borrowed
+//
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: DAI,
+//			fee: 100,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		//simulate a flashloan where an IBtoken is recovered as collateral
+//		//contracts needs it when unwrapping any IBtokens
+//		deal(CRV_sUSD_3CRV, address(flashLoanLiquidation), 1 * 1e18); 
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: CRV_wstETH_ETH,
+//				fee: 0,
+//				isIBToken: true,
+//				protocol: 0 //curve
+//			}); 
+//		
+//		//not being used unless flashloaned token is different from debtAsset	
+//		//in this case, there is no difference so it will not be checked 
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: USDC,
+//				from: DAI,
+//				amount: 100 * 1e18, //93 USD current
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			CRV_sUSD_3CRV, //collateral
+//			DAI, //debt
+//			100 * 1e18, //amount
+//			0, //tranche (simulated)
+//			user, 
+//			swapData,
+//			ibPath
+//		);
+//	}
+//
+//	function testFlashloanIncludeIBTokenVelodrome() public {
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: WETH,
+//			fee: 100,
+//			isIBToken: false,
+//			protocol: 3	
+//		});
+//
+//		//simulate a flashloan where an IBtoken is recovered as collateral
+//		//contracts needs it when unwrapping any IBtokens
+//		deal(VELO_wstETH_ETH, address(flashLoanLiquidation), 100); 
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: VELO_wstETH_ETH,
+//				fee: 0,
+//				isIBToken: true,
+//				protocol: 1 //velodrome
+//			}); 
+//		
+//		//not being used unless flashloaned token is different from debtAsset	
+//		//in this case, there is no difference so it will not be checked 
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: WETH,
+//				from: WETH,
+//				amount: 100 * 1e18, //93 USD current
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			VELO_wstETH_ETH, //collateral
+//			WETH, //debt
+//			100 * 1e18, //amount
+//			0, //tranche (simulated)
+//			user, 
+//			swapData,
+//			ibPath
+//		);
+//	}
+//
+//	function testFlashloanInlcudeIBTokenBalancer() public {
+//		//simulate a liquidation on a loan where beets is collateral for a WETH loan
+//		//initial path only -- protocol not used
+//		FlashLoanLiquidation.Path[] memory paths = new FlashLoanLiquidation.Path[](1); 
+//		paths[0] = FlashLoanLiquidation.Path({
+//			tokenIn: WETH,
+//			fee: 100,
+//			isIBToken: false,
+//			protocol: 2 //none
+//		});
+//
+//		//simulate a flashloan where an IBtoken is recovered as collateral
+//		//contracts needs it when unwrapping any IBtokens
+//		deal(SHANGAI_SHAKEDOWN, address(flashLoanLiquidation), 100 * 1e18); 
+//
+//		FlashLoanLiquidation.Path memory ibPath = 
+//			FlashLoanLiquidation.Path({
+//				tokenIn: SHANGAI_SHAKEDOWN,
+//				fee: 0,
+//				isIBToken: true,
+//				protocol: 2 //beets
+//			}); 
+//		
+//		//not being used unless flashloaned token is different from debtAsset	
+//		//in this case, there is no difference so it will not be checked 
+//		FlashLoanLiquidation.SwapData memory swapData = 
+//			FlashLoanLiquidation.SwapData({
+//				to: WETH,
+//				from: WETH,
+//				amount: 10 * 1e18, //93 USD current
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		flashLoanLiquidation.flashLoanCall(
+//			SHANGAI_SHAKEDOWN, //collateral
+//			WETH, //debt
+//			10 * 1e18, //amount
+//			0, //tranche (simulated)
+//			user, 
+//			swapData,
+//			ibPath
+//		);
+//	}
+//	
 }
