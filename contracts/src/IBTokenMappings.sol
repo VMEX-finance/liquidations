@@ -6,13 +6,20 @@
 contract IBTokenMappings {
 
 	mapping(address => address) public tokenMappings; 
+	mapping(address => bytes32) public beetsLookup; 
 	mapping(address => bool) public flashloanable;
 	mapping(address => bool) public stable; 
 
 	address public constant WETH = 0x4200000000000000000000000000000000000006; 
 	address public constant USDC = 0x7F5c764cBc14f9669B88837ca1490cCa17c31607;  
+	address public constant wstETH_CRV_LP = 0xEfDE221f306152971D8e9f181bFe998447975810;
+	address public constant wstETH_CRV_POOL = 0xB90B9B1F91a01Ea22A182CD84C1E22222e39B415; 
+	address public constant 3CRV = 0x1337BedC9D22ecbe766dF105c9623922A27963EC; //lp AND pool 
+
 	
-	//eth underlying beefy vaults
+	//THESE ARE BEEFY VAULTS CONTAINING THE UNDERLYING LP TOKEN -- NOT THE LP TOKEN ITSELF
+	//except beets
+	
 	//curve
 	address internal constant CRV_wstETH_ETH = 0x0892a178c363b4739e5Ac89E9155B9c30214C0c0; 
 	address internal constant VELO_wstETH_ETH = 0xca39e63E3b798D5A3f44CA56A123E3FCc29ad598; 
@@ -60,8 +67,11 @@ contract IBTokenMappings {
 
 		tokenMappings[VELO_USDT_USDC] = USDC; 	
 		stable[VELO_USDT_USDC] = true; 
-
-		//is asset flashloanable?
+		
+		//shangai shakedown	
+		beetsLookup[0x7B50775383d3D6f0215A8F290f2C9e2eEBBEceb2] = BEETS_wstETH_ETH; 
+		//rocket fuel
+		beetsLookup[0x4Fd63966879300caFafBB35D157dC5229278Ed23] = BEETS_rETH_ETH; 
 		
 	}
 

@@ -38,6 +38,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984); 
 
 	IVault internal balancerVault = IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8); 
+
+	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
 	
 
 	struct Path {
@@ -224,32 +226,23 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			if (underlyingToSwapFor == tokenMappings.WETH()) {
 				//amount of curve tokens
 				uint256 beforeEthBalance = address(this).balance; 
-
+				
 				amountUnderlyingLP = 
-					IERC20(0xEfDE221f306152971D8e9f181bFe998447975810).balanceOf(address(this)); 
-				ICurveFi curvePool = ICurveFi(0xB90B9B1F91a01Ea22A182CD84C1E22222e39B415); 
+					IERC20(tokenMappings.wstETH_CRV_LP()).balanceOf(address(this)); 
+				ICurveFi curvePool = ICurveFi(tokenMappings.wstETH_CRV_POOL()); 
 
 				//remove liquidity from curve, get ETH back
 				curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 0, 1); //slippage @ 1 for now
 				uint256 afterEthbalance = address(this).balance; 
-				uint256 ethDif = afterEthbalance - beforeEthBalance; //so we don't wrap all gas
+				uint256 ethDif = afterEthbalance - beforeEthBalance; //so we don't wrap all eth needed for gas
 				IWETH(tokenMappings.WETH()).deposit{value: ethDif}(); 
 
 				amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
 
 			} else {
-				//TODO: refactor -> add hardcoded values to IBTokenMappings
 				amountUnderlyingLP = 
-					IERC20(0x061b87122Ed14b9526A813209C8a59a633257bAb).balanceOf(address(this)); 
-				ICurveFi curvePool = ICurveFi(0x061b87122Ed14b9526A813209C8a59a633257bAb); 
-				
-				//remove liquidity from sUSD pool, get 3crv tokens	
-				curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 1, 1);
-				uint256 underlying3Crv = 
-					IERC20(0x1337BedC9D22ecbe766dF105c9623922A27963EC).balanceOf(address(this)); 
-
-				//now we can remove 3crv token liquidity and unwrap to USDC
-				ICurveFi crv3Pool = ICurveFi(0x1337BedC9D22ecbe766dF105c9623922A27963EC); 
+					IERC20(tokenMappings.3CRV()).balanceOf(address(this)); 
+				ICurveFi curvePool = ICurveFi(tokenMappings.3CRV()); 
 				crv3Pool.remove_liquidity_one_coin(underlying3Crv, 1, 1); 
 
 				amountWithdrawnFromCurve = IERC20(tokenMappings.USDC()).balanceOf(address(this)); 
@@ -260,7 +253,9 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			return amountWithdrawnFromCurve; 
 
 		} else if (protocol == 1) { //velodrome
-
+				
+			//TODO: refactor -> handle naked lp
+			//probably pull this out into it's own function, will have to include swaps from both underlying to flashloaned asset
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
 			bool stable = tokenMappings.stable(collateralAsset); 
 			uint256 beefyShares = IERC20(collateralAsset).balanceOf(address(this)); 
@@ -301,15 +296,19 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 			 console.log(IERC20(underlyingToSwapFor).balanceOf(address(this))); 
 
 		} else { //BPT withdraw
-			//beethoven withdraw needed
 			//balancer API
-			//this is the only beets pool we support atm
-			
-			bytes32 poolId = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b;
+			//TODO: get below data using function lookup in IBTokenMappings
+			bytes32 poolId = IBTokenMappings.beetsLookup[collateralAsset]; 
 			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
 			uint256[] memory minAmountsOut = new uint256[](2);
-			uint256 exitTokenIndex = 1; //WETH
-					
+
+			uint256 exitTokenIndex; //WETH
+			if (poolId == SHAGHAI_SHAKEDOWN) {
+				exitTokenIndex = 1; 
+			} else {
+				exitTokenIndex = 0; 
+			}
+
 			IERC20(collateralAsset).approve(
 				address(balancerVault),
 				IERC20(collateralAsset).balanceOf(address(this))
@@ -346,7 +345,6 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	
 	//swap using velo, easiest to do, maybe not the best liquidity(?)
 	function _swapVelo(address from, address to, uint256 amountIn, bool stable) internal returns (uint256) {
-
 
 		IERC20(from).approve(address(veloRouter), amountIn); 
 		address[] memory veloPath = new address[](2); 
