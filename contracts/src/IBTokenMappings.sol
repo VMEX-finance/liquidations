@@ -1,6 +1,9 @@
  //SPDX License Identifier: MIT
  pragma solidity >=0.8.0; 
 
+import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
+import {ISwapRouter} from "./interfaces/ISwapRouter.sol"; 
+import {IVault} from "./interfaces/IBalancerVault.sol"; 
 
 
 contract IBTokenMappings {
@@ -9,12 +12,20 @@ contract IBTokenMappings {
 	mapping(address => bytes32) public beetsLookup; 
 	mapping(address => bool) public flashloanable;
 	mapping(address => bool) public stable; 
-
+	
+	//constants
 	address public constant WETH = 0x4200000000000000000000000000000000000006; 
 	address public constant USDC = 0x7F5c764cBc14f9669B88837ca1490cCa17c31607;  
 	address public constant wstETH_CRV_LP = 0xEfDE221f306152971D8e9f181bFe998447975810;
 	address public constant wstETH_CRV_POOL = 0xB90B9B1F91a01Ea22A182CD84C1E22222e39B415; 
-	address public constant 3CRV = 0x1337BedC9D22ecbe766dF105c9623922A27963EC; //lp AND pool 
+	address public constant THREE_CRV = 0x1337BedC9D22ecbe766dF105c9623922A27963EC; //lp AND pool 
+	IVeloRouter internal constant veloRouter = 
+		IVeloRouter(0x9c12939390052919aF3155f41Bf4160Fd3666A6f); 
+	bytes32 internal constant SHANGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
+	ISwapRouter internal swapRouter = 
+		ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); //same on ETH/OP/ARB/POLY
+	IVault internal balancerVault = IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8); 
+
 
 	
 	//THESE ARE BEEFY VAULTS CONTAINING THE UNDERLYING LP TOKEN -- NOT THE LP TOKEN ITSELF
@@ -27,7 +38,7 @@ contract IBTokenMappings {
 	address internal constant VELO_OP_ETH = 0xC9737c178d327b410068a1d0ae2D30ef8e428754; 
 	bytes32 internal constant BEETS_wstETH_ETH = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b;  
 	bytes32 internal constant BEETS_rETH_ETH = 0x4fd63966879300cafafbb35d157dc5229278ed2300020000000000000000002b; 
-	address internal constant CRV_sUSD_3CRV = 0x107Dbf9c9C0EF2Df114159e5C7DC2baf7C444cFF; 
+	address internal constant CRV_sUSD_THREE_CRV = 0x107Dbf9c9C0EF2Df114159e5C7DC2baf7C444cFF; 
 	address internal constant VELO_SNX_USDC = 0x48B3EdF0D7412B11c232BD9A5114B590B7F28134; 
 	address internal constant VELO_sUSD_USDC = 0x2232455bf4622002c1416153EE59fd32B239863B; 
 	address internal constant VELO_OP_USDC = 0x613f54c8836FD2C09B910869AC9d4de5e49Db1d8; 
@@ -48,7 +59,7 @@ contract IBTokenMappings {
 		tokenMappings[VELO_OP_ETH] = WETH; 	
 		stable[VELO_OP_ETH] = false;  
 
-		tokenMappings[CRV_sUSD_3CRV] = USDC; 
+		tokenMappings[CRV_sUSD_THREE_CRV] = USDC; 
 
 		tokenMappings[VELO_SNX_USDC] = USDC; 	
 		stable[VELO_SNX_USDC] = false; 

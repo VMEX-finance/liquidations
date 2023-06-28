@@ -4,11 +4,13 @@ pragma solidity >=0.8.0;
 import "forge-std/Test.sol";
 import "../src/FlashLoanLiquidationV3.sol"; 
 import "../src/IBTokenMappings.sol"; 
+import "../src/PeripheralLogic.sol"; 
 import "forge-std/interfaces/IERC20.sol"; 
 
 contract LiquidationTest is Test {
-	FlashLoanLiquidation internal flashLoanLiquidation; 
 	IBTokenMappings internal tokenMappings; 
+	FlashLoanLiquidation internal flashLoanLiquidation; 
+	PeripheralLogic internal peripheralLogic; 
 
 	//all tokens are OP addresses
 	address internal WETH = 0x4200000000000000000000000000000000000006; 
@@ -30,7 +32,8 @@ contract LiquidationTest is Test {
 
     function setUp() public {
 		tokenMappings = new IBTokenMappings(); 
-		flashLoanLiquidation = new FlashLoanLiquidation(tokenMappings); 
+		flashLoanLiquidation = new FlashLoanLiquidation(); 
+		peripheralLogic = new PeripheralLogic(tokenMappings, flashLoanLiquidation); 
 
 		deal(DAI, address(flashLoanLiquidation), 1000 * 1e18); 
 		deal(WETH, address(flashLoanLiquidation), 1000 * 1e18); 
