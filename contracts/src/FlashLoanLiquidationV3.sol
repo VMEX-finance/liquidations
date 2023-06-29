@@ -12,8 +12,9 @@ import {ILendingPool} from "./interfaces/ILendingPool.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
 import {PeripheralLogic} from "./PeripheralLogic.sol"; 
 
+import "forge-std/Test.sol"; 
 
-contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase { 
+contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test { 
 
 	ILendingPool internal lendingPool; //vmex 
 
@@ -59,7 +60,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	
 	
 	FlashLoanData memory decodedParams = abi.decode(params, (FlashLoanData)); 
-	
+	console.log("amount flashloaned", amount); 	
 	//if we need to swap, this will contain the necessary tokens to swap to. If we do not need to swap, the tokens in swapData.to and swapData.from will be the same. 
 	//if not the same, then we swap to the appropriate token using univ3 router.  
 	//this will already be set by the node script, including amountsOut
@@ -67,7 +68,12 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	//initial swap from flashloaned token to debtAsset if debtAsset is NOT flashloanable
 	uint256 amountOut; 
 	PeripheralLogic.SwapData memory swapBeforeFlashloan = decodedParams.swapBeforeFlashloan; 
+	console.log("balance flashloan.from before swap", IERC20(swapBeforeFlashloan.from).balanceOf(address(this))); 
 	if (swapBeforeFlashloan.to != swapBeforeFlashloan.from) { 
+		IERC20(swapBeforeFlashloan.from).transfer(
+			address(peripheralLogic), 
+			swapBeforeFlashloan.amount
+		); 
 		amountOut = peripheralLogic._swap(decodedParams.swapBeforeFlashloan); 
 	}
 	
@@ -85,26 +91,40 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	//after liquidation, receive a single asset of collateral of amount (debtAmount + liquidation bonus) in usd
 	uint256 afterLiquidationBalance = 
 		IERC20(decodedParams.collateralAsset).balanceOf(address(this)); 
+	console.log("after liquidation balance of collateral", afterLiquidationBalance); 
 
 	//unwrap if necessary -> swap back to floashloaned token
 	//if vault -> we use the underlying token
 	
 	if (decodedParams.ibPath.isIBToken == true) {
+		IERC20(decodedParams.collateralAsset).transfer(
+			address(peripheralLogic),
+			afterLiquidationBalance
+		);
 		peripheralLogic._unwrapIBToken(
 			decodedParams.collateralAsset, 
 			decodedParams.ibPath.protocol
 		); 
 	}
 
-	
-	if (decodedParams.collateralAsset != decodedParams.debtAsset) {
-		//TODO: handle cases where we need to swap back to debt asset from collateral asset
+	//swap back after the flashloan if necessary	
+	if (decodedParams.swapAfterFlashloan.to != decodedParams.swapAfterFlashloan.from) {
+		PeripheralLogic.SwapData memory swapAfterFlashloan = decodedParams.swapAfterFlashloan; 
+		decodedParams.swapAfterFlashloan.amount = afterLiquidationBalance; 
+		IERC20(decodedParams.collateralAsset).transfer(
+			address(peripheralLogic), 
+			swapAfterFlashloan.amount
+		); 
 		peripheralLogic._swap(decodedParams.swapAfterFlashloan); 
 	}
 	
 
 	uint256 amountAfterAllTxns = IERC20(asset).balanceOf(address(this));  
-	uint amountOwing = amount + premium; 
+	console.log("amount after all swaps", amountAfterAllTxns); 
+	uint256 amountOwing = amount + premium; 
+	console.log("amount owing", amountOwing); 
+
+
 
 	//if not profitable or b/e, we will revert automatically
 	require(amountAfterAllTxns >= amountOwing); 
@@ -117,7 +137,6 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	//bot passes these params in
 	function flashLoanCall(FlashLoanData memory data) public {	
 		//keeping in mind that debtAsset here may not actually be the actual debt asset until after the swap has occurred	
-	
 		bytes memory params = abi.encode(data); 
 		POOL.flashLoanSimple(
 			address(this), //receiver

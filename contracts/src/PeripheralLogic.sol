@@ -19,11 +19,18 @@ import "forge-std/Test.sol";
 
 contract PeripheralLogic is Test {
 
+	enum Protocol {
+		CURVE,
+		VELODROME,
+		BEETHOVEN,
+		NONE
+	}
+
 	struct Path {
 		address tokenIn;
 		uint24 fee; 
 		bool isIBToken; //interest bearing, i.e. vault, lp, etc
-		uint8 protocol; //0 = curve, 1 = beefy, 2 = beethoven, 3 = none 
+		Protocol protocol;
 	}
 
 	struct SwapData {
@@ -42,7 +49,7 @@ contract PeripheralLogic is Test {
 
 	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
 	
-	ISwapRouter internal swapRouter = 
+	ISwapRouter public swapRouter = 
 		ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); //same on ETH/OP/ARB/POLY
 
 	IUniswapV3Factory internal factory =
@@ -108,27 +115,21 @@ contract PeripheralLogic is Test {
 	}
 
 	//unwraps a vault token if needed, can be curve, beefy, or beethoven
-	function _unwrapIBToken(
-		address collateralAsset, uint8 protocol) external returns (uint256) {
-		if (protocol == 0) { //curve
+	function _unwrapIBToken(address collateralAsset, Protocol protocol) external returns (uint256) {
+		if (protocol == Protocol.CURVE) { 
 			//withdraw beefy LP
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
-			uint256 beefyShares = IERC20(collateralAsset).balanceOf(address(flashLoanLiquidation)); 
-			IBeefyVault beefyVault = IBeefyVault(collateralAsset); // --> receive underlying LP tokens
-			beefyVault.withdraw(beefyShares); 
 
-			uint256 amountWithdrawnFromCurve; 	
-			if (underlyingToSwapFor == tokenMappings.WETH()) {
-				amountWithdrawnFromCurve = _unwrapCurveToken(underlyingToSwapFor); 
-			} else { //USDC
-				amountWithdrawnFromCurve = _unwrapCurveToken(underlyingToSwapFor); 
-			}
+			uint256 amountWithdrawnFromCurve =
+			   	_unwrapCurveToken(collateralAsset, underlyingToSwapFor); 
+			console.log("amount from curve in UNWRAP", amountWithdrawnFromCurve); 
+			console.log("underlying to swap for", underlyingToSwapFor); 
 
 			//curve now unwrapped to base USDC or WETH
-			console.log("amount from curve:", amountWithdrawnFromCurve); 	
+			IERC20(underlyingToSwapFor).transfer(address(flashLoanLiquidation), amountWithdrawnFromCurve);
 			return amountWithdrawnFromCurve; 
 
-		} else if (protocol == 1) { //velodrome
+		} else if (protocol == Protocol.VELODROME) { //velodrome
 				
 			//TODO: refactor -> handle naked lp
 			//probably pull this out into it's own function, will have to include swaps from both underlying to flashloaned asset
@@ -177,37 +178,53 @@ contract PeripheralLogic is Test {
 		}
 	}
 
-	function _unwrapCurveToken(address underlyingToSwapFor) internal returns(uint256) {
+	function _unwrapCurveToken(address collateralAsset, address underlyingToSwapFor) internal returns(uint256) {
 
 		uint256 amountWithdrawnFromCurve; 	
 		uint256 amountUnderlyingLP; 
 
 		if (underlyingToSwapFor == tokenMappings.WETH()) {
-			//amount of curve tokens
-			uint256 beforeEthBalance = address(flashLoanLiquidation).balance; 
-			
+
+			uint256 beefyShares = IERC20(collateralAsset).balanceOf(address(this)); 
+			IBeefyVault beefyVault = IBeefyVault(collateralAsset); 
+			beefyVault.withdraw(beefyShares); // --> receive underlying LP tokens
+
+			//checking for ether
+			uint256 beforeEthBalance = address(this).balance; 
 			amountUnderlyingLP = 
-				IERC20(tokenMappings.wstETH_CRV_LP()).balanceOf(address(flashLoanLiquidation)); 
+				IERC20(tokenMappings.wstETH_CRV_LP()).balanceOf(address(this)); 
 			ICurveFi curvePool = ICurveFi(tokenMappings.wstETH_CRV_POOL()); 
+			console.log("amount underlying LP", amountUnderlyingLP); 
 
 			//remove liquidity from curve, get ETH back
+			//TODO approval needed?
 			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 0, 1); //slippage @ 1 for now
-			uint256 afterEthbalance = address(flashLoanLiquidation).balance; 
+			uint256 afterEthbalance = address(this).balance; 
 			uint256 ethDif = afterEthbalance - beforeEthBalance; //leave some for gas
 			IWETH(tokenMappings.WETH()).deposit{value: ethDif}(); 
 
-			amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(flashLoanLiquidation)); 
+			amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
 
 		} else {
-			//USDC route
+			//USDC route//remove liquidity from sUSD pool, get 3crv tokens	
 			amountUnderlyingLP = 
-				IERC20(tokenMappings.THREE_CRV()).balanceOf(address(flashLoanLiquidation)); 
-			ICurveFi curvePool = ICurveFi(tokenMappings.THREE_CRV()); 
-			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 1, 1); 
+				IERC20(tokenMappings.sUSD_THREE_CRV()).balanceOf(address(this)); 
+			ICurveFi curvePool = ICurveFi(tokenMappings.sUSD_THREE_CRV()); 
+			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 1, 1);
 
-			amountWithdrawnFromCurve = IERC20(tokenMappings.USDC()).balanceOf(address(flashLoanLiquidation)); 
+			//now we can remove 3crv token liquidity and unwrap to USDC
+			uint256 underlying3CrvAmount = 
+					IERC20(tokenMappings.THREE_CRV()).balanceOf(address(this)); 
+			console.log("amount of underlying 3crv", underlying3CrvAmount); 
+			ICurveFi crv3Pool = ICurveFi(tokenMappings.THREE_CRV()); 
+			crv3Pool.remove_liquidity_one_coin(underlying3CrvAmount, 1, 1); 
+
+			console.log("amount of underlying usdc", amountUnderlyingLP); 
+
+			amountWithdrawnFromCurve = IERC20(tokenMappings.USDC()).balanceOf(address(this)); 
 		}
-
+		
+		console.log("amount in unwrap curve returned", amountWithdrawnFromCurve); 
 		return amountWithdrawnFromCurve; 
 
 	}
@@ -292,5 +309,7 @@ contract PeripheralLogic is Test {
 
 		//recieve WETH after exit
 	}
+
+	receive() external payable {} 
 
 }
