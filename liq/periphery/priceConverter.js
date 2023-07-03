@@ -9,8 +9,7 @@ const factory = new web3.eth.Contract(
 	uniswapFactoryAddress
 );
 
-const quoterAbi = require('../contracts/quoterAbi.json'); 
-const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; 
+const quoterAbi = require('../contracts/quoterAbi.json'); const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; 
 const quoter = new web3.eth.Contract(
 	quoterAbi,
 	quoterAddress
@@ -41,7 +40,7 @@ async function getPool(inputToken) {
 			console.log(pool); 
 			return i; 
 		} else {
-			console.log("no weth pools exist"); 
+			throw("no weth pools exist"); 
 		}
 	}
 }

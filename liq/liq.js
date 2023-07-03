@@ -1,6 +1,5 @@
 const Web3 = require('web3'); 
 require('dotenv').config(); 
-const axios = require('axios'); 
 const web3 = new Web3(process.env.OP_RPC); 
 const ethers = require('ethers'); //@5.7.2
 const { AlphaRouter, SwapType } = require('@uniswap/smart-order-router'); 
@@ -8,6 +7,7 @@ const uniswap = require('@uniswap/sdk-core');
 const constants = require('./periphery/constants.js'); 
 const converter = require('./periphery/priceConverter.js'); 
 const testData = require('./test/mock_liquidation_data.js'); 
+const dataGetter = require('./periphery/dataGetter.js'); 
 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
 const provider = new ethers.providers.InfuraProvider('optimism'); 
@@ -38,7 +38,7 @@ const router = new AlphaRouter({
 //main entry
 //TODO: refactor:: move peripheral and helper functions to another file
 async function main() {
-	const liquidatable = await getLiquidatableAccounts(); 	
+	const liquidatable = await dataGetter.getLiquidatableAccounts(); 	
 	for (let i = 0; i < liquidatable.length; i ++) {
 		let liqParams = {
 			collateralAsset: liquidatable[i].collateralAsset,
@@ -145,9 +145,9 @@ async function buildRoute(tokenIn, tokenOut, amount) {
 			uniswap.TradeType.EXACT_INPUT,
 			options
 		); 
-		params = await buildParams(route.route, tokenIn.decimals, tokenOut.decimals); 
+		params = await buildParams(route.route, tokenIn.decimals, tokenOut.decimals, tokenIn.address); 
 	} else {
-		params = await buildParams(undefined, tokenIn.decimals, tokenOut.decimals); 		
+		params = await buildParams(undefined, tokenIn.decimals, tokenOut.decimals, tokenIn.address); 		
 	}
 	return params; 
 }
@@ -157,7 +157,7 @@ async function buildRoute(tokenIn, tokenOut, amount) {
 module.exports = { mainTest, buildRoute }; 
 
 //NOTE: if there is only a single hop, we want the path array to be a length of 1
-async function buildParams(route, decimalsIn, decimalsOut) {
+async function buildParams(route, decimalsIn, decimalsOut, tokenInAddress) {
 	//receives the route and returns an object that is specific for liquidation contract
 	//params needed:
 	//	- amountIn
@@ -190,7 +190,7 @@ async function buildParams(route, decimalsIn, decimalsOut) {
 					tokenIn: route[0].tokenPath[i].address,
 					fee: fees[i],
 					isIBToken: false, //always false here
-					protocol: 3 //none
+					protocol: constants.Protocol.NONE //none
 				};
 				params.path.push(path); 
 			}
@@ -198,22 +198,22 @@ async function buildParams(route, decimalsIn, decimalsOut) {
 			params.path[0].tokenIn = tokenIn; 
 			params.path[0].fee = fees[0];
 			params.path[0].isIBToken = false; //always false here
-			params.path[0].protocol = 3; //none
+			params.path[0].protocol = constants.Protocol.NONE; //none
 		}
 	} else {
 		//if tokenIn and tokenOut are the same, params are ignored but we still need to return data
 		params = {
-			to: "0x0000000000000000000000000000000000000000",
-			from: "0x0000000000000000000000000000000000000000",
-			amount: "0",
-			minOut: "0",
+			to: tokenInAddress,
+			from: tokenInAddress,
+			amount: 0,
+			minOut: 0,
 			path: []
 		}
 		const path0 = {
-			tokenIn: "0x0000000000000000000000000000000000000000",
-			fee: '500',
+			tokenIn: tokenInAddress,
+			fee: 0,
 			isIBToken: false, //always false here
-			protocol: 3 //none
+			protocol: constants.Protocol.NONE //none
 		}; 
 
 		params.path.push(path0); 
@@ -235,7 +235,7 @@ async function buildIBPath(token) {
 		path.tokenIn = token; 
 		path.fee = 0; 
 		path.isIBToken = false;
-		path.protocol = 3; //none 
+		path.protocol = constants.Protocol.NONE; //none 
 	}
 	
 	return path; 
@@ -275,122 +275,5 @@ async function getToken(tokenIn) {
 	return token;
 }
 
-
-//instead of looping through every user, we should probably just get active borrows
-async function getLiquidatableAccounts() {
-	let liquidatable = []; 
-	const users = await getTrancheDatas(); 
-	for (let i = 0; i < users.length; i++) {
-		const user = users[i]; 
-		for	(let j = 0; j < user.tranches.length; j++) {
-			const tranche = user.tranches[j]; 
-			const healthFactor = await getHealthFactor(user.id, tranche.id); 
-			if (healthFactor < 2e18) {
-				const liquidationData = {
-					user: user.id,
-					tranche: tranche.id,
-					collateralAsset: tranche.collat,
-					debtAsset: tranche.debt,
-					debtAmount: tranche.amount
-				}
-
-				liquidatable.push(liquidationData); 
-			}
-		}	
-	}
-
-	return liquidatable; 
-}
-
-//getLiquidatableAccounts(); 
-
-async function getTrancheDatas() {
-	let availableUsers = []; 
-
-	await axios.post(api_url, { 
-		query: `{
-		  users(where: {borrowedReservesCount_gt: 0}) {
-			id
-    		borrowedReservesCount
-    		borrowReserve: reserves(where: {currentTotalDebt_gt: 0}) {
-    		  currentTotalDebt
-    		  reserve {
-    		    assetData {
-    		      underlyingAssetName
-				  id
-    		    }
-    		    tranche {
-    		      id
-    		    }
-    		  }
-    		}
-    		collateralReserve: reserves{
-    		  currentATokenBalance
-    		  reserve{
-    		     assetData {
-    		      underlyingAssetName
-				  id
-    		    }
-    		    tranche{
-    		      id
-    		    }
-    		  }
-    		}
-		}
-}
-`
-	}).then((res) => {
-		
-		let userData = {}; 
-		const data = res.data.data; 
-		const users = data.users; 
-
-		for (let i = 0; i < users.length; i++) {
-			userData = {
-				id: "",
-			}
-			userData.tranches = []; 
-
-			userData.id = users[i].id; 
-			for (let j = 0; j < users[i].borrowReserve.length; j++) {
-				let tranche = {
-					id: users[i].borrowReserve[j].reserve.tranche.id,
-					debt: users[i].borrowReserve[j].reserve.assetData.id,
-					amount: users[i].borrowReserve[j].currentTotalDebt
-				}	
-				userData.tranches.push(tranche); 
-			}
-				
-
-
-
-			//check if the collateral tranche id matches witht the borrow one
-			//if it does, put the relevant data
-			//if it doesn't, discard it
-			for (let j = 0; j < users[i].collateralReserve.length; j++) {
-					for (let k = 0; k < userData.tranches.length; k++) {
-						if (userData.tranches[k].id == users[i].collateralReserve[j].reserve.tranche.id) {
-							userData.tranches[k].collat = users[i].collateralReserve[j].reserve.assetData.id; 
-						}
-					}
-				}
-
-			availableUsers.push(userData); 
-		}
-		
-	}); 
-
-	return availableUsers; 
-}
-
-//getTrancheDatas(); 
-
-//this is returning max hf for accounts that have active borrows?
-async function getHealthFactor(user, tranche) {
-	//given a user's address, get the health factor from the lending pool contract using a web3 call	
-	const accountData = await lendingPool.methods.getUserAccountData(user, tranche, false).call(); 
-	const healthFactor = accountData[5]; 
-	return healthFactor; 
-}
 
 

@@ -53,6 +53,8 @@ contract IBTokenMappings {
 	//velo v1
 	address internal constant VELO_OP_USDC = 0x47029bc8f5CBe3b464004E87eF9c9419a48018cd;
 	address internal constant VELO_SNX_USDC = 0x9056EB7Ca982a5Dd65A584189994e6a27318067D; 
+
+	//not used for now
 	address internal constant VELO_sUSD_USDC = 0xd16232ad60188B68076a235c65d692090caba155; 
 	address internal constant VELO_DAI_USDC = 0x4F7ebc19844259386DBdDB7b2eB759eeFc6F8353; 
 	address internal constant VELO_FRAX_USDC = 0xAdF902b11e4ad36B227B84d856B229258b0b0465; 

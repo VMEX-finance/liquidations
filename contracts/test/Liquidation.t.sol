@@ -115,6 +115,69 @@ contract LiquidationTest is Test {
 		flashLoanLiquidation.flashLoanCall(data);
 	}
 
+	function testFlashLoanNoPath() public {
+
+		//simulating a loan where a user has taken out a loan in DAI using WETH as collateral
+		PeripheralLogic.Protocol protocol = PeripheralLogic.Protocol.NONE;
+		
+		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
+		paths[0] = PeripheralLogic.Path({
+			tokenIn: WETH,
+			fee: 500,
+			isIBToken: false,
+			protocol: protocol	
+		});
+
+		PeripheralLogic.Path[] memory paths2 = new PeripheralLogic.Path[](1); 
+		paths2[0] = PeripheralLogic.Path({
+			tokenIn: WETH,
+			fee: 500,
+			isIBToken: false,
+			protocol: protocol
+		}); 
+
+		PeripheralLogic.Path memory ibPath = 
+			PeripheralLogic.Path({
+				tokenIn: WETH,
+				fee: 0,
+				isIBToken: false,
+				protocol: protocol
+			}); 
+		
+		//swap from DAI to WETH
+		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
+			PeripheralLogic.SwapData({
+				to: WETH,
+				from: WETH,
+				amount: 0, //99 USD
+				minOut: 0,
+				path: paths
+			});
+		
+		PeripheralLogic.SwapData memory swapAfterFlashloan = 
+			PeripheralLogic.SwapData({
+				to: WETH,
+				from: WETH,
+				amount: 0, //addded in by contract
+				minOut: 0,
+				path: paths
+			});
+
+		FlashLoanLiquidation.FlashLoanData memory data = 
+			FlashLoanLiquidation.FlashLoanData({
+				collateralAsset: WETH,
+				debtAsset: WETH,
+				debtAmount: 100 * 1e6,
+				trancheId: 0,
+				user: user,
+				swapBeforeFlashloan: swapBeforeFlashloan,
+				swapAfterFlashloan: swapAfterFlashloan,
+				ibPath: ibPath
+			}); 
+
+		flashLoanLiquidation.flashLoanCall(data);
+	}
+
 	function testFlashLoanComplexPath() public {
 		//simulating a time where the borrowed token is not directly flashloanable and has a complex path
 		//we flashloan WETH, but our debt asset is actually USDC
