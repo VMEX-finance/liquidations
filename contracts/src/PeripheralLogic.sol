@@ -136,7 +136,7 @@ contract PeripheralLogic is Test {
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
 			bool stable = tokenMappings.stable(collateralAsset); 
 			uint256 amountLP = 
-				IERC20(collateralAsset).balanceOf(address(flashLoanLiquidation)); 	
+				IERC20(collateralAsset).balanceOf(address(this)); 	
 
 			//underlying VELO lp
 			(address token0, address token1) = IVeloPair(collateralAsset).tokens(); 
@@ -145,18 +145,16 @@ contract PeripheralLogic is Test {
 			//swap for underlying desired
 			uint256 amountToSwap; 
 			if (token0 == underlyingToSwapFor) { 
-				amountToSwap = IERC20(token1).balanceOf(address(flashLoanLiquidation)); 
+				amountToSwap = IERC20(token1).balanceOf(address(this)); 
 				_swapVelo(token1, token0, amountToSwap, stable); 
 			 } else {
-				amountToSwap = IERC20(token0).balanceOf(address(flashLoanLiquidation)); 
+				amountToSwap = IERC20(token0).balanceOf(address(this)); 
 				_swapVelo(token0, token1, amountToSwap, stable); 
 			 }
-
-			 return IERC20(underlyingToSwapFor).balanceOf(address(flashLoanLiquidation)); 
+				return IERC20(underlyingToSwapFor).balanceOf(address(flashLoanLiquidation)); 
 
 		} else { //BPT withdraw
 			//balancer API
-			//TODO: get below data using function lookup in IBTokenMappings
 			bytes32 poolId = tokenMappings.beetsLookup(collateralAsset); 
 			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
 
@@ -234,8 +232,8 @@ contract PeripheralLogic is Test {
 		address token0, 
 		address token1,
 		uint256 amount, 
-		bool stable) 
-		internal returns (uint256) {
+		bool stable
+	) internal returns (uint256) {
 			//get underlying VELO tokens via VeloPair
 			
 			//remove liquidity via router
@@ -247,25 +245,32 @@ contract PeripheralLogic is Test {
 				amount,
 				0, //can use quote
 				0, //can use quote
-				address(flashLoanLiquidation),
+				address(this),
 				block.timestamp
 			); 
 	}
 
 	//swap using velo, easiest to do, maybe not the best liquidity(?)
-	function _swapVelo(address from, address to, uint256 amountIn, bool stable) internal returns (uint256) {
+	function _swapVelo(
+		address from, 
+		address to,
+	   	uint256 amountIn, 
+		bool stable
+	) internal returns (uint256[] memory) {
 
 		IERC20(from).approve(address(veloRouter), amountIn); 
 		address[] memory veloPath = new address[](2); 
-		veloRouter.swapExactTokensForTokensSimple(
+		uint256[] memory amounts = veloRouter.swapExactTokensForTokensSimple(
 			amountIn,
 			0,
 			from,
 			to,
 			stable,
-			address(flashLoanLiquidation), //send tokens here
+			address(flashLoanLiquidation), 
 			block.timestamp //deadline
-		); 			
+		);
+		
+		return amounts;  	
 	}
 
 	function _withdrawBeets(
@@ -273,21 +278,20 @@ contract PeripheralLogic is Test {
 		 IERC20 poolToken0, 
 		 IERC20 poolToken1, 
 		uint256 exitTokenIndex,
-		bytes32 poolId) internal {
+		bytes32 poolId
+	) internal {
 
 			uint256[] memory minAmountsOut = new uint256[](2);
 			IERC20(collateralAsset).approve(
 				address(balancerVault),
-				IERC20(collateralAsset).balanceOf(address(flashLoanLiquidation))
+				IERC20(collateralAsset).balanceOf(address(this))
 			); 
 
 			bytes memory userData = abi.encode(
 				IVault.ExitKind.EXACT_BPT_IN_FOR_ONE_TOKEN_OUT,
-				IERC20(collateralAsset).balanceOf(address(flashLoanLiquidation)),
+				IERC20(collateralAsset).balanceOf(address(this)),
 				exitTokenIndex	
 			);
-
-			emit log_named_bytes("user data", userData); 
 
 			IAsset[] memory assets = new IAsset[](2); 
 				assets[0] = IAsset(address(poolToken0)); 
@@ -300,14 +304,14 @@ contract PeripheralLogic is Test {
 				toInternalBalance: false //receive ERC20
 			}); 
 
+			//recieve WETH after exit
 			balancerVault.exitPool(
 				poolId, 
-				address(flashLoanLiquidation), 
-				payable(address(flashLoanLiquidation)), 
+				address(this), //sender
+				payable(address(flashLoanLiquidation)), //recipient
 				exitPoolRequest
 			); 
 
-		//recieve WETH after exit
 	}
 
 	receive() external payable {} 
