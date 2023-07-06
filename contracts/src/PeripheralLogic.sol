@@ -1,14 +1,14 @@
 //SPDX License Identifier: MIT
 pragma solidity >=0.8.0; 
 
-import {ISwapRouter} from "./interfaces/ISwapRouter.sol"; 
-import {IUniswapV3Factory} from "./interfaces/IFactory.sol"; 
+import {ISwapRouter} from "./interfaces/ISwapRouter.sol"; import {IUniswapV3Factory} from "./interfaces/IFactory.sol"; 
 import {IBeefyVault} from "./interfaces/IBeefyVault.sol"; 
 import {ICurveFi} from "./interfaces/ICurveFi.sol"; 
 import {IWETH} from "./interfaces/IWeth.sol"; 
 import {IVeloPair} from "./interfaces/IVeloPair.sol"; 
 import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
 import {IVault, IAsset} from "./interfaces/IBalancerVault.sol"; 
+import {IYearnVault} from "./interfaces/IYearnVault.sol"; 
 import {IBTokenMappings} from "./IBTokenMappings.sol"; 
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
 
@@ -23,6 +23,7 @@ contract PeripheralLogic is Test {
 		CURVE,
 		VELODROME,
 		BEETHOVEN,
+		YEARN,
 		NONE
 	}
 
@@ -90,15 +91,16 @@ contract PeripheralLogic is Test {
 
 		} else {
 			
-			//TODO: this is assumed, but may not always be the case, double check this with more complex paths
-			//can pack the route as bytes, probably
-			bytes memory path = abi.encodePacked(
-				swapData.path[0].tokenIn,
-				swapData.path[0].fee,
-				swapData.path[1].tokenIn, //WETH (probably)
-				swapData.path[1].fee,
-				swapData.to //tokenOut
-			); 
+			//TODO: test with multiple intermediary tokens, kind of scuffed			
+			bytes memory pre; 
+			for (uint8 i = 0; i < swapData.path.length; i++) {
+				pre = abi.encodePacked(
+					swapData.path[i].tokenIn,
+					swapData.path[i].fee
+				);
+			}
+			bytes memory post = abi.encodePacked(swapData.to); 
+			bytes memory path = abi.encodePacked(pre, post); 
 
 			ISwapRouter.ExactInputParams memory params = 
 				ISwapRouter.ExactInputParams({
@@ -108,8 +110,7 @@ contract PeripheralLogic is Test {
 					amountIn: swapData.amount,
 					amountOutMinimum: swapData.minOut	
 				}); 	
-
-			amountOut = swapRouter.exactInput(params); 
+				
 			return amountOut; 
 		}
 	}
@@ -152,6 +153,13 @@ contract PeripheralLogic is Test {
 				_swapVelo(token0, token1, amountToSwap, stable); 
 			 }
 				return IERC20(underlyingToSwapFor).balanceOf(address(flashLoanLiquidation)); 
+		} else if (protocol == Protocol.YEARN) {
+			//if collateral is any of these, we can attempt to flashloan any of these underlying
+			//TODO: set up yearn to flashloan specific assets 
+			uint256 amountShares = 
+				IERC20(collateralAsset).balanceOf(address(this)); 	
+			yearnVault.withdraw(amountShares); 
+				
 
 		} else { //BPT withdraw
 			//balancer API

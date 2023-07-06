@@ -2,7 +2,7 @@ const liq = require('../liq.js');
 const { mainTest } = require('../liq.js'); 
 const axios = require('axios'); const Web3 = require('web3'); 
 const web3 = new Web3('ws://127.0.0.1:8545'); 
-//const chai = require('chai'); 
+const expect = require('chai'); 
 const testAbi = require('../../contracts/out/FlashLoanLiquidationV3.sol/FlashLoanLiquidation.json').abi; 
 
 const wethAbi = require('../contracts/wethAbi.json'); 
@@ -46,27 +46,37 @@ const swapRouter = new web3.eth.Contract(
 
 const amount = (1e18).toString(); 
 
+
+describe("liquidation", async function() {
+	it("should init the periperhal logic address", async function () {
+		await testContract.methods.init(peripheralLogicAddress).send({from: user}); 
+		const router = await pLogic.methods.swapRouter.call(); 
+		expect(router).to.equal("0xE592427A0AEce92De3Edee1F18E0157C05861564"); 
+	});
+}); 
+
+//test(wethAddress, wethAddress, amount); 
+
+
 //simulating how the contract would be called via the script on the server
 //currently only swaps with NO PATH are working due to not simulating "liquidation funds"
-async function test() {
+//TODO: TEST VARIOUS TYPES OF COLLATERAL AND AMOUNTS
+async function test(testCollateral, testDebt, testAmount) {
 	//SETUP	
-	await testContract.methods.init(peripheralLogicAddress).send({from: user}); 
 
-	const params = await liq.mainTest(wethAddress, wethAddress, amount); 
-	console.log(params); 
-	
-	////unwrap some weth	
-	let balance = await weth.methods.balanceOf(flashloanLiqAddress).call(); 
-	if (balance === 0) {
+		const params = await liq.mainTest(testCollateral, testDebt, testAmount); 
+		assert.equal(params.collateralAsset, testCollateral, "collat is properly input"); 
+		assert.equal(params.debtAsset, testDebt, "collat is properly input"); 
+		console.log(params); 
+		
+		////unwrap some weth and send it to test contract
 		await weth.methods.deposit().send({from: user, value: "1000000000000000000"});	
 		await weth.methods.transfer(flashloanLiqAddress, "1000000000000000000").send({from: user}); 
-	}
 
-	let balanceContract = await weth.methods.balanceOf(flashloanLiqAddress).call(); 
-	console.log(balanceContract); 	
+		let balanceContract = await weth.methods.balanceOf(flashloanLiqAddress).call(); 
+		//console.log(balanceContract); 	
 
-	const test = await testContract.methods.flashLoanCall(params).send({from: user, gas: 6900000}); 
-
+		const test = await testContract.methods.flashLoanCall(params).send({from: user, gas: 6900000}); 
 }
 
 async function testSwap(outToken, fee, amount) {
@@ -90,6 +100,5 @@ async function testSwap(outToken, fee, amount) {
 	console.log("swap complete");
 }
 
-//test(); 
-testSwap(daiAddress, 500, amount); 
+//testSwap(daiAddress, 500, amount); 
 
