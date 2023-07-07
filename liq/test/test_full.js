@@ -1,8 +1,9 @@
+
 const liq = require('../liq.js');  
 const { mainTest } = require('../liq.js'); 
-const axios = require('axios'); const Web3 = require('web3'); 
-const web3 = new Web3('ws://127.0.0.1:8545'); 
-const expect = require('chai'); 
+const axios = require('axios'); 
+const Web3 = require('web3'); 
+const web3 = new Web3('ws://127.0.0.1:8545'); const { expect } = require('chai'); 
 const testAbi = require('../../contracts/out/FlashLoanLiquidationV3.sol/FlashLoanLiquidation.json').abi; 
 
 const wethAbi = require('../contracts/wethAbi.json'); 
@@ -46,16 +47,74 @@ const swapRouter = new web3.eth.Contract(
 
 const amount = (1e18).toString(); 
 
-
-describe("liquidation", async function() {
-	it("should init the periperhal logic address", async function () {
-		await testContract.methods.init(peripheralLogicAddress).send({from: user}); 
-		const router = await pLogic.methods.swapRouter.call(); 
-		expect(router).to.equal("0xE592427A0AEce92De3Edee1F18E0157C05861564"); 
+describe("full liquidation route", async function () {
+	before(async function () {
+		await testContract.methods.init(peripheralLogicAddress).send({from: user, gas: 690000}); 
+		await weth.methods.deposit().send({from: user, value: "1000000000000000000"});	
+		await weth.methods.transfer(flashloanLiqAddress, "1000000000000000000").send({from: user}); 
 	});
+
+	it("should have access to web3", async function () {
+		const router = await pLogic.methods.swapRouter().call(); 
+		expect(router).to.be.equal("0xE592427A0AEce92De3Edee1F18E0157C05861564"); 
+	}); 
+
+	it("should get params back from liq.js", async function () {
+		const params = await liq.mainTest(wethAddress, wethAddress, amount); 	
+		expect(params).to.haveOwnProperty("collateralAsset"); 
+		expect(params).to.haveOwnProperty("debtAsset"); 
+
+	});
+
+	it("should pass in said params to liquidation contract", async function () {
+		this.timeout(5000); 
+		const params = await liq.mainTest(wethAddress, wethAddress, amount); 	
+		const test = await testContract.methods.flashLoanCall(params).send({from: user, gas: 6900000}); 
+	}); 
+
 }); 
 
-//test(wethAddress, wethAddress, amount); 
+
+describe("should test various paths", async function () {
+	before(async function () {
+		await testContract.methods.init(peripheralLogicAddress).send({from: user, gas: 690000}); 
+		await weth.methods.deposit().send({from: user, value: "2000000000000000000"});	
+		await weth.methods.transfer(flashloanLiqAddress, "1000000000000000000").send({from: user}); 
+	});
+
+	//weth to crv
+	it("should single hop swap", async function () {
+		this.timeout(5000); 
+		const opToken = "0x4200000000000000000000000000000000000042"; 
+		const params = await liq.mainTest(opToken, wethAddress, amount); 
+		
+		//borrow token -> debt token 
+		expect(params.collateralAsset).to.be.equal(opToken); 
+		expect(params.debtAsset).to.be.equal(wethAddress); 
+		expect(params.debtAmount).to.be.equal(amount); 
+		expect(params.swapBeforeFlashloan.to).to.be.equal(wethAddress); 
+		expect(params.swapAfterFlashloan.to).to.be.equal(wethAddress); 
+	}); 
+
+	it("should multi hop swap", async function () {
+		this.timeout(5000); 
+		const opToken = "0x4200000000000000000000000000000000000042"; 
+		const params = await liq.mainTest(opToken, wethAddress, amount); 
+		
+		//debt token (weth) -> liquidated for op -> swapped back for weth
+		//TODO: fix failing test -- contract has no OP to swap back for weth
+		expect(params.collateralAsset).to.be.equal(opToken); 
+		expect(params.debtAsset).to.be.equal(wethAddress); 
+		expect(params.debtAmount).to.be.equal(amount); 
+		expect(params.swapBeforeFlashloan.to).to.be.equal(wethAddress); 
+		expect(params.swapAfterFlashloan.to).to.be.equal(wethAddress); 
+
+		console.log("before loan", params.swapBeforeFlashloan); 
+		console.log("after loan", params.swapAfterFlashloan); 
+		//await testContract.methods.flashLoanCall(params).send({from: user, gas: 690000});
+	}); 
+
+}); 
 
 
 //simulating how the contract would be called via the script on the server

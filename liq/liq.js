@@ -81,34 +81,37 @@ async function main() {
 
 //for testing the contract w/o data from subgraph
 async function mainTest(collateralAsset, debtAsset, debtAmount) {
-		//if this is false, we want the loan to be in WETH
-		let liqParams = {
-			collateralAsset: collateralAsset, 
-			debtAsset: debtAsset,
-			debtAmount: debtAmount,
-			trancheId: 0,
-			user: "0xbF43260Bb34daF3BA6F1fD8C3BE31c3Bb48Bdf49"
-		}; 
+	//if this is false, we want the loan to be in WETH
+	let liqParams = {
+		collateralAsset: collateralAsset, 
+		debtAsset: debtAsset,
+		debtAmount: debtAmount,
+		trancheId: 0,
+		user: "0xbF43260Bb34daF3BA6F1fD8C3BE31c3Bb48Bdf49"
+	}; 
 
-		const swapTo = liqParams.debtAsset; 
+	const swapTo = liqParams.debtAsset; 
 
-		const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
-		if (exists == false) {
-			liqParams.debtAsset = "0x4200000000000000000000000000000000000006"; //WETH
-			//convert debtAmount to amount in WETH + 5%
-			liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
-		}
+	const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
+	if (exists == false) {
+		liqParams.debtAsset = "0x4200000000000000000000000000000000000006"; //WETH
+		//convert debtAmount to amount in WETH + 5%
+		liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
+	}
 
-			
-		//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token
-		//cases where debtAsset === swapTo are handled in the contract and ignored
-		const swapBeforeFlashloan = await buildRoute(liqParams.debtAsset, swapTo, liqParams.debtAmount); 
-		const swapAfterFlashloan = await buildRoute(liqParams.collateralAsset, liqParams.debtAsset, liqParams.debtAmount); //not sure if amount actually really matters? 
-		liqParams.swapBeforeFlashloan = swapBeforeFlashloan; 	
-		liqParams.swapAfterFlashloan = swapAfterFlashloan; 
-		liqParams.ibPath = await buildIBPath(liqParams.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
-		return liqParams; 
+		
+	//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token
+	//cases where debtAsset === swapTo are handled in the contract and ignored
+	const swapBeforeFlashloan = await buildRoute(liqParams.debtAsset, swapTo, liqParams.debtAmount); 
+	const swapAfterFlashloan = await buildRoute(liqParams.collateralAsset, liqParams.debtAsset, liqParams.debtAmount); //not sure if amount actually really matters? 
+	liqParams.swapBeforeFlashloan = swapBeforeFlashloan; 	
+	liqParams.swapAfterFlashloan = swapAfterFlashloan; 
+	liqParams.ibPath = await buildIBPath(liqParams.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here	
+	
+	//console.log(liqParams); 
+	return liqParams; 
 }
+
 
 function checkIfDirectFlashloanExists(inputToken) {
 	let exists = false; 
@@ -132,10 +135,9 @@ async function buildRoute(tokenIn, tokenOut, amount) {
 		type: SwapType.SWAP_ROUTER_02
 	}
 	
-	tokenIn = await getToken(tokenIn.toString());  //WETH
-	tokenOut = await getToken(tokenOut.toString()); //DAI
+	tokenIn = await getToken(tokenIn.toString());
+	tokenOut = await getToken(tokenOut.toString());
 	amount = amount.toString(); 
-	
 	//swapping from flashloaned asset to debtAsset, if they are the same, we just return the same two tokens set as a route and decode in contract
 	//route used to swap 
 	if (tokenIn.address.toLowerCase() != tokenOut.address.toLowerCase()) {
@@ -195,10 +197,15 @@ async function buildParams(route, decimalsIn, decimalsOut, tokenInAddress) {
 				params.path.push(path); 
 			}
 		} else {
-			params.path[0].tokenIn = tokenIn; 
-			params.path[0].fee = fees[0];
-			params.path[0].isIBToken = false; //always false here
-			params.path[0].protocol = constants.Protocol.NONE; //none
+			const pathParams = {
+				tokenIn: tokenIn,
+				fee: fees[0],
+				isIBToken: false, //always false here
+				protocol: constants.Protocol.NONE
+			};
+
+			params.path.push(pathParams); 
+
 		}
 	} else {
 		//if tokenIn and tokenOut are the same, params are ignored but we still need to return data

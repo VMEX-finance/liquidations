@@ -153,13 +153,19 @@ contract PeripheralLogic is Test {
 				_swapVelo(token0, token1, amountToSwap, stable); 
 			 }
 				return IERC20(underlyingToSwapFor).balanceOf(address(flashLoanLiquidation)); 
+
 		} else if (protocol == Protocol.YEARN) {
 			//if collateral is any of these, we can attempt to flashloan any of these underlying
 			//TODO: set up yearn to flashloan specific assets 
+			//collat asset is vault 
+			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
+			IYearnVault yearnVault = IYearnVault(collateralAsset); 
 			uint256 amountShares = 
 				IERC20(collateralAsset).balanceOf(address(this)); 	
-			yearnVault.withdraw(amountShares); 
-				
+			uint256 amountWithdrawn = yearnVault.withdraw(amountShares, address(flashLoanLiquidation)); 
+			console.log("amount withdrawn from yearn:", amountWithdrawn);
+
+			return amountWithdrawn; 
 
 		} else { //BPT withdraw
 			//balancer API

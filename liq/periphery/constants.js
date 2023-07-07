@@ -3,7 +3,8 @@ const Protocol  = {
 	CURVE: 0,
 	VELODROME: 1,
 	BEETHOVEN: 2,
-	NONE: 3
+	YEARN: 3,
+	NONE: 4
 }
 
 
