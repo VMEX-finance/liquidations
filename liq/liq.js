@@ -35,6 +35,8 @@ const router = new AlphaRouter({
 	provider: provider
 }); 
 
+const WETH = "0x4200000000000000000000000000000000000006"; 
+
 //main entry
 //TODO: refactor:: move peripheral and helper functions to another file
 async function main() {
@@ -50,16 +52,15 @@ async function main() {
 
 		const swapTo = liqParams.debtAsset; 
 
-		//if this is false, we want the loan to be in WETH
-		const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
+		//if this is false, we want the loan to be in WETH unless it's an ibToken
+		const exists = checkIfDirectFlashloanExists(liqParams.debtAsset); 
 		if (exists == false) {
-			liqParams.debtAsset = "0x4200000000000000000000000000000000000006"; //WETH
+			liqParams.debtAsset = WETH//WETH
 			//convert debtAmount to amount in WETH + 5%
 			liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
 		}
 			
-		//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token
-		//cases where debtAsset === swapTo are handled in the contract
+		//the debt asset above is the flashloan we're taking out, the swap data includes a path to swap back to the ACTUAL debt token //also handles cases where swapTo and debtAsset are the same
 		const swapBeforeFlashloan = buildRoute(liqParams.debtAsset, swapTo, liqParams.debtAmount); 
 		const swapAfterFlashloan = buildRoute(liqParams.collateralAsset, liqParams.debtAsset, liqParams.debtAmount); //not sure if amount actually really matters? 
 		liqParams.ibPath = buildIBPath(liq_params.collateralAsset); //if the collateral asset is a ib token, needed actions will be included here
@@ -125,6 +126,16 @@ function checkIfDirectFlashloanExists(inputToken) {
 
 //checkIfDirectFlashloanExists("0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb"); 
 
+function checkIfCollateralIsIBToken(inputToken) {
+	let isIBToken = false; 
+	if (constants.ibTokens.hasOwnProperty(inputToken)) {
+		isIBToken = true; 		
+	}
+	return isIBToken; 
+}
+
+//checkIfCollateralIsIBToken("0xaD17A225074191d5c8a37B50FdA1AE278a2EE6A2"); 
+
 async function buildRoute(tokenIn, tokenOut, amount) {		
 	//for slippage calc only  
 	let params; 
@@ -134,13 +145,16 @@ async function buildRoute(tokenIn, tokenOut, amount) {
 		deadline: Math.floor(Date.now() / 1000 + 1800),
 		type: SwapType.SWAP_ROUTER_02
 	}
-	
+
+	const isIBToken = checkIfCollateralIsIBToken(tokenIn); 
+	console.log(tokenIn); 
+
 	tokenIn = await getToken(tokenIn.toString());
 	tokenOut = await getToken(tokenOut.toString());
 	amount = amount.toString(); 
 	//swapping from flashloaned asset to debtAsset, if they are the same, we just return the same two tokens set as a route and decode in contract
 	//route used to swap 
-	if (tokenIn.address.toLowerCase() != tokenOut.address.toLowerCase()) {
+	if (tokenIn.address.toLowerCase() != tokenOut.address.toLowerCase() && isIBToken == false) {
 			const route = await router.route(
 			uniswap.CurrencyAmount.fromRawAmount(tokenIn, amount),
 			tokenOut,

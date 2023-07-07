@@ -1,4 +1,3 @@
-
 const liq = require('../liq.js');  
 const { mainTest } = require('../liq.js'); 
 const axios = require('axios'); 
@@ -109,9 +108,15 @@ describe("should test various paths", async function () {
 		expect(params.swapBeforeFlashloan.to).to.be.equal(wethAddress); 
 		expect(params.swapAfterFlashloan.to).to.be.equal(wethAddress); 
 
-		console.log("before loan", params.swapBeforeFlashloan); 
-		console.log("after loan", params.swapAfterFlashloan); 
 		//await testContract.methods.flashLoanCall(params).send({from: user, gas: 690000});
+	}); 
+
+	it("should work for ib tokens", async function () {
+		this.timeout(5000); 
+		const crvWstEth = "0x0892a178c363b4739e5Ac89E9155B9c30214C0c0";
+		const params = await liq.mainTest(crvWstEth, wethAddress, amount);  
+		
+		console.log(params); 
 	}); 
 
 }); 
