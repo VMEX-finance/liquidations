@@ -24,6 +24,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	PeripheralLogic public peripheralLogic; 
 
 	address public owner; 
+	bool public active = true; 
 
 	struct FlashLoanData {
 		address collateralAsset;  
@@ -135,6 +136,8 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	
 	//bot passes these params in
 	function flashLoanCall(FlashLoanData memory data) public {	
+		require(active == true, "not active implementation"); 
+
 		//keeping in mind that debtAsset here may not actually be the actual debt asset until after the swap has occurred	
 		bytes memory params = abi.encode(data); 
 		POOL.flashLoanSimple(
@@ -147,4 +150,27 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
   }
 	
 	receive() external payable {} 
+
+	////////// housekeeping logic //////////
+	modifier onlyOwner() {
+		require(msg.sender == owner); 
+		_; 
+	}
+
+	function sweep(address token) external onlyOwner {
+		uint256 balance = IERC20(token).balanceOf(address(this)); 
+		IERC20(token).tranfer(holdingAccount, balance); 	
+	}	
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;  
+	}
+
+	function disable() external onlyOwner {
+		active = false; 
+	}
+
+	function enable() external onlyOwner {
+		active = true; 
+	}
 }

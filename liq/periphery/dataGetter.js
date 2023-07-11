@@ -1,9 +1,103 @@
 const Web3 = require('web3'); 
 const axios = require('axios'); 
-const web3 = new Web3(process.env.OP_RPC); 
+const web3 = new Web3(process.env.OP_RPC); //TODO: set to wss 
 const api_url = "https://api.studio.thegraph.com/query/40387/vmex-finance-goerli/v0.0.11"; 
+const lending_pool_address = "0xdff58B48df141BCb86Ba6d06EEaABF02Ef45C528"; //GOERLI TODO: replace with mainnet address
+const lending_pool_abi = require('./contracts/lendingPoolAbi.json').abi; 
+const lendingPool = new web3.eth.Contract(
+	lending_pool_abi,
+	lending_pool_address
+); 
+
+//loans will wrap around all loans and be made up of users array
+//users houses each loan for each user
+//however, users can have multiple loans across multiple tranches, so we need a way to support that
+let loans = []; 
+let user = {}; 
+let userLoanData = []; 
 
 
+//loans [
+//userId {
+//	userData loan 1 {
+// },
+// userData loan 2 {
+// }, 
+// userData loan 3 {
+// }
+//}
+//]
+//
+//
+//
+//minimally, we need the user address and the tranche only, from there we can check the health factor
+//we need a way to store the user addresses tho
+
+
+
+const Type = {
+	DEPOSIT: 0,
+	BORROW: 1,
+	WITHDRAW: 2
+};
+
+async function subscribe() {
+	//subscribe to deposit, borrow and withdraw events latest block only
+
+
+	lendingPool.events.Deposit({fromBlock: "latest"},
+		(event) => {
+			filterEvents(event, Type.DEPOSIT); 	
+	}); 
+
+	lendingPool.events.Borrow({fromBlock: "latest"},
+		(events) => {
+			filterEvents(event, Type.BOROW); 
+	}); 
+
+	lendingPool.events.Withdraw({fromBlock: "latest"},
+		(event) => {
+			filterEvents(event, Type.WITHDRAW); 
+	}); 
+}
+
+//TODO: handle multiple deposits and borrows
+function filterEvents(eventData, type) {
+	//collateralAsset
+	//debtAsset
+	//debtAmount
+	//tracheId
+	//user
+	if (type == DEPOSIT) {
+		let userDepositData = {
+			id: eventDatas.returnValues.user,
+			collateralAsset: eventData.returnValues.reserve,
+			tranche: eventData.returnValues.trancheId,
+			collateralAmount: eventData.returnValues.amount
+		};
+		
+		loans.push(userDepositData); 
+
+	}
+
+	if (type == BORROW) {
+		let userId = eventData.returnValues.user; 
+		const i = loans.findIndex(loan => loan.id == userId); 
+		let userData = loans[i]; 
+		userData.debtAsset = eventData.returnValues.reserve; 
+		userData.debtAmount = eventData.returnValues.amount; 
+	}
+	
+	//we need to loop through the loans, find the user, and determine if this withdraw is all of his collateral 
+	if (type == WITHDRAW) {
+		let userId = eventData.returnValues.user; 
+		const i = loans.findIndex(loan => loan.id == userId); 
+		let userData = loans[i]; 
+		
+		
+		
+	}
+}
 
 //instead of looping through every user, we should probably just get active borrows
 async function getLiquidatableAccounts() {

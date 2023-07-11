@@ -38,7 +38,6 @@ const router = new AlphaRouter({
 const WETH = "0x4200000000000000000000000000000000000006"; 
 
 //main entry
-//TODO: refactor:: move peripheral and helper functions to another file
 async function main() {
 	const liquidatable = await dataGetter.getLiquidatableAccounts(); 	
 	for (let i = 0; i < liquidatable.length; i ++) {
@@ -67,16 +66,7 @@ async function main() {
 		liqParams.swapBeforeFlashloan = swapBeforeFlashloan; 	
 		liqParams.swapAfterFlashloan = swapAfterFlashloan; 
 
-		await flashloanLiquidation.methods.flashLoanCall(
-			liqParams.collateralAsset,
-			liqParams.debtAsset,
-			liqParams.debtAmount,
-			liqParams.trancheId,
-			liqParams.user,
-			liqParams.swapBeforeFlashloan,
-			liqParams.swapAfterFlashloan,
-			liqParams.ibPath
-		);
+		await flashloanLiquidation.methods.flashLoanCall(liqParams);
 	}
 }
 
@@ -95,7 +85,7 @@ async function mainTest(collateralAsset, debtAsset, debtAmount) {
 
 	const exists = checkIfDirectFlashloanExists(liqParams.debtAsset.toString()); 
 	if (exists == false) {
-		liqParams.debtAsset = "0x4200000000000000000000000000000000000006"; //WETH
+		liqParams.debtAsset = WETH; //WETH
 		//convert debtAmount to amount in WETH + 5%
 		liqParams.debtAmount = converter.getPriceInWETH(swapTo, liqParams.debtAmount); 
 	}
