@@ -44,23 +44,34 @@ async function subscribe() {
 //
 //getEvents(); 
 
-function testArray() {		
-	let array = []; 
-	let user = {}; 
 
+function testNestedObjects() {
 
-	user = {
-		id: 1,
-		collateral: 'DAI'
-	}; 
+	let tranches = [{}]; 
+		
+	//tranche 0 {
+	// user1,
+	// user2,
+	// user3,
+	// user4
+	//},
+	//tranche 1 {
+	//	user 1,
+	//	user 5, 
+	//	user 6
+	//}
 
-	array.push(user); 
-
-
-	const i = array.findIndex(item => item.id === 1); 
-	console.log(i); 
+	let trancheId = 0; 
+	let trancheData = {
+		id: trancheId,
+		users: []
+	};
+	
+	tranches.push(trancheData); 
+	console.log(tranches); 
 }
 
-testArray(); 
+testNestedObjects(); 
+
 
 
