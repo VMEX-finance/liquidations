@@ -10,26 +10,43 @@ contract FlashLoanRouter {
 	address public FlashLoanLiquidator; 
 	address public IBTokenMappings; 
 	address public PeripheralLogic; 
+	address public Mothership; 
 
 	constructor() {
 		owner = msg.sender; 
 	}
 
-	modifier onlyOnwer() {
+	modifier onlyOwner() {
 		require(msg.sender == owner);
 		_; 
 	}
 
-	function setNewFlashloanContract(address newContract) external onlyOnwer {
+	function init(
+		address _flashloan, 
+		address _ibTokenMappings, 
+		address _peripheralLogic,
+		address _mothership
+	) external onlyOwner {
+		FlashLoanLiquidator = _flashloan; 
+		IBTokenMappings = _ibTokenMappings;
+		PeripheralLogic = _peripheralLogic; 
+		Mothership = _mothership; 
+	}
+
+	function setNewFlashloanContract(address newContract) external onlyOwner {
 		FlashLoanLiquidator = newContract; 	
 	}
 
-	function setNewIBTokenMappings(address newContract) external onlyOnwer {
+	function setNewIBTokenMappings(address newContract) external onlyOwner {
 		IBTokenMappings = newContract; 	
 	}
 
-	function setNewPeripheralLogic(address newContract) external onlyOnwer {
+	function setNewPeripheralLogic(address newContract) external onlyOwner {
 		PeripheralLogic = newContract; 	
+	}
+
+	function setNewMothership(address newContract) external onlyOwner {
+		Mothership = newContract; 	
 	}
 
  }

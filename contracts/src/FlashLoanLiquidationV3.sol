@@ -11,6 +11,7 @@ import {ILendingPool} from "./interfaces/ILendingPool.sol";
 //periphery
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
 import {PeripheralLogic} from "./PeripheralLogic.sol"; 
+import {Mothership} from "./Mothership.sol"; 
 
 import "forge-std/Test.sol"; 
 
@@ -22,9 +23,11 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		IPoolAddressesProvider(0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb); //OP
 
 	PeripheralLogic public peripheralLogic; 
+	Mothership public mothership; 
 
 	address public owner; 
 	bool public active = true; 
+	uint256 public MAX_SLIPPAGE = 500; //5%
 
 	struct FlashLoanData {
 		address collateralAsset;  
@@ -44,9 +47,10 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	}
 	
 	//IMPORTANT -- CALL THIS AFTER PERIPHERAL LOGIC HAS BEEN DELPOYED
-	function init(PeripheralLogic _peripheralLogic) external {
+	function init(PeripheralLogic _peripheralLogic, Mothership _mothership) external {
 		require(msg.sender == owner); 
-		peripheralLogic= _peripheralLogic; 
+		peripheralLogic = _peripheralLogic; 
+		mothership = _mothership; 
 	}
 
 	//called automatically by AAVE lending pool
@@ -119,15 +123,18 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	}
 	
 
-	uint256 amountAfterAllTxns = IERC20(asset).balanceOf(address(this));  
-	console.log("amount after all swaps", amountAfterAllTxns); 
 	uint256 amountOwing = amount + premium; 
+	uint256 amountAfterAllTxns = IERC20(asset).balanceOf(address(this)); 
+	uint256 totalToPayOut = amountOwing + (amountOwing * MAX_SLIPPAGE / 10000); 
+	console.log("total + MAX_SLIPPAGE (5%):", totalToPayOut); 
+	console.log("amount after all swaps", amountAfterAllTxns); 
 	console.log("amount owing", amountOwing); 
 
-
-
-	//if not profitable or b/e, we will revert automatically
-	require(amountAfterAllTxns >= amountOwing); 
+	if (amountAfterAllTxns < amountOwing) {
+		uint256 dif = amountOwing - amountAfterAllTxns; 
+		require(dif < totalToPayOut, "max slippage exceeded"); 
+		requestFundsFromMothership(asset, dif); //difference between the amount we need and the amount we have 
+	}
 
     IERC20(asset).approve(address(POOL), amountOwing);
 
@@ -149,6 +156,11 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 		); 
   }
 	
+	//requests funds to cover the difference if the liquidation is not profitable
+	function requestFundsFromMothership(address token, uint256 amount) internal {
+		mothership.request(token, amount); 	
+	}
+	
 	receive() external payable {} 
 
 	////////// housekeeping logic //////////
@@ -159,11 +171,15 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 
 	function sweep(address token) external onlyOwner {
 		uint256 balance = IERC20(token).balanceOf(address(this)); 
-		IERC20(token).tranfer(holdingAccount, balance); 	
+		IERC20(token).transfer(address(mothership), balance); 	
 	}	
 
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;  
+	}
+
+	function changeMaxSlippage(uint256 newMax) external onlyOwner {
+		MAX_SLIPPAGE = newMax; 
 	}
 
 	function disable() external onlyOwner {

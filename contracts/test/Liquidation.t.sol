@@ -6,6 +6,8 @@ import "../src/FlashLoanLiquidationV3.sol";
 import "../src/IBTokenMappings.sol"; 
 import "../src/PeripheralLogic.sol"; 
 import "forge-std/interfaces/IERC20.sol"; 
+import "../src/Mothership.sol"; 
+import "../src/Router.sol"; 
 
 import "../src/interfaces/IYearnVault.sol"; 
 
@@ -13,6 +15,8 @@ contract LiquidationTest is Test {
 	IBTokenMappings internal tokenMappings; 
 	FlashLoanLiquidation internal flashLoanLiquidation; 
 	PeripheralLogic internal peripheralLogic; //all tokens are OP addresses address internal 
+	FlashLoanRouter internal flashLoanRouter; 
+	Mothership internal mothership; 
 
 
 	address internal WETH = 0x4200000000000000000000000000000000000006; 
@@ -44,14 +48,23 @@ contract LiquidationTest is Test {
 		tokenMappings = new IBTokenMappings(); 
 		flashLoanLiquidation = new FlashLoanLiquidation(); 
 		peripheralLogic = new PeripheralLogic(tokenMappings, flashLoanLiquidation); 
+		flashLoanRouter = new FlashLoanRouter(); 
+		mothership = new Mothership(flashLoanRouter, user); 
 
-		flashLoanLiquidation.init(peripheralLogic); 
+		flashLoanLiquidation.init(peripheralLogic, mothership); 
+		
+		flashLoanRouter.init(
+			address(flashLoanLiquidation),
+			address(tokenMappings),
+			address(peripheralLogic),
+			address(mothership)
+		);
 			
 		//simulating liquidation profits
 		//deal(DAI, address(flashLoanLiquidation), 10 * 1e18); 
-		deal(WETH, address(flashLoanLiquidation), 0.01 * 1e18); 
-		deal(USDC, address(flashLoanLiquidation), 10 * 1e6); 
-		deal(USDT, address(flashLoanLiquidation), 10 * 1e6); 
+		deal(WETH, address(mothership), 0.01 * 1e18); 
+		deal(USDC, address(mothership), 10 * 1e6); 
+		deal(USDT, address(mothership), 10 * 1e6); 
     }
 
 
@@ -60,7 +73,10 @@ contract LiquidationTest is Test {
 	//test that params are working 
 	//test that amounts are returned
 	
-	//for tests, we're going to go liquidate a position where a user has deposited WETH as collat
+	//for tests, we're going to),
+	//address(tokenMappings),
+	//address(peripheralLogic),
+	//address(mothership) go liquidate a position where a user has deposited WETH as collat
 	//and has taken out a loan in USDC
 	function testFlashLoanBasicPath() public {
 
@@ -190,9 +206,8 @@ contract LiquidationTest is Test {
 
 	function testFlashLoanComplexPath() public {
 		//simulating a time where the borrowed token is not directly flashloanable and has a complex path
-		//we flashloan WETH, but our debt asset is actually OP
-		//first swap is WETH -> DAI
-		//second swap is DAI -> USDC
+		//first swap is WETH -> USDC
+		//second swap is USDC -> OP
 		PeripheralLogic.Protocol protocol = PeripheralLogic.Protocol.NONE;
 
 		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](2); 
@@ -204,15 +219,15 @@ contract LiquidationTest is Test {
 		});
 
 		paths[1] = PeripheralLogic.Path({
-			tokenIn: DAI,
-			fee: 100,
+			tokenIn: USDC,
+			fee: 500,
 			isIBToken: false,
 			protocol: protocol	
 		});
 
 		PeripheralLogic.Path[] memory path2 = new PeripheralLogic.Path[](1); 
 		path2[0] = PeripheralLogic.Path({
-			tokenIn: USDC,
+			tokenIn: OP,
 			fee: 500,
 			isIBToken: false,
 			protocol: protocol	
@@ -229,14 +244,16 @@ contract LiquidationTest is Test {
 	
 		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
 			PeripheralLogic.SwapData({
-				to: USDC,
+				to: OP,
 				from: WETH,
 				amount: 100 * 1e6, //99 USD
 				minOut: 0,
 				path: paths
 			});
 			
-			//we get dai after collateral liquidation
+			//we get usdc after collateral liquidation
+			deal(USDC, address(flashLoanLiquidation), 2000 * 1e6); 
+
 			PeripheralLogic.SwapData memory swapAfterFlashloan = 
 				PeripheralLogic.SwapData({
 					to: WETH,
