@@ -11,8 +11,7 @@ contract IBTokenMappings {
 	//public mappings
 	mapping(address => address) public tokenMappings; 
 	mapping(address => bytes32) public beetsLookup; 
-	mapping(address => bool) public flashloanable;
-	mapping(address => bool) public stable; 
+	mapping(address => bool) public flashloanable; mapping(address => bool) public stable; 
 	
 	//public constants
 	address public constant WETH = 0x4200000000000000000000000000000000000006; 
@@ -38,10 +37,13 @@ contract IBTokenMappings {
 	
 	//curve
 	address internal constant CRV_wstETH_ETH = 0x0892a178c363b4739e5Ac89E9155B9c30214C0c0; 
-	//velo v1
-	address internal constant VELO_wstETH_ETH = 0xc6C1E8399C1c33a3f1959f2f77349D74a373345c; 
-	address internal constant VELO_ETH_USDC = 0x79c912FEF520be002c2B6e57EC4324e260f38E50; 
-	address internal constant VELO_OP_ETH = 0xcdd41009E74bD1AE4F7B2EeCF892e4bC718b9302; 
+	//velo v2
+	address internal constant VELO_wstETH_ETH = 0x6dA98Bde0068d10DDD11b468b197eA97D96F96Bc; 
+	address internal constant VELO_ETH_USDC = 0x0493Bf8b6DBB159Ce2Db2E0E8403E753Abd1235b; 
+	address internal constant VELO_OP_ETH = 0xd25711EdfBf747efCE181442Cc1D8F5F8fc8a0D3; 
+	address internal constant VELO_rETH_ETH = 0x7e0F65FAB1524dA9E2E5711D160541cf1199912E; 
+	address internal constant VELO_LUSD_ETH = 0x6387765fFA609aB9A1dA1B16C455548Bfed7CbEA; 
+
 	//beets
 	bytes32 internal constant ROCKET_FUEL = 0x4fd63966879300cafafbb35d157dc5229278ed2300020000000000000000002b; 
 
@@ -50,9 +52,14 @@ contract IBTokenMappings {
 	
 	//curve
 	address internal constant CRV_sUSD_THREE_CRV = 0x061b87122Ed14b9526A813209C8a59a633257bAb; 
-	//velo v1
-	address internal constant VELO_OP_USDC = 0x47029bc8f5CBe3b464004E87eF9c9419a48018cd;
-	address internal constant VELO_SNX_USDC = 0x9056EB7Ca982a5Dd65A584189994e6a27318067D; 
+	//velo v2
+	address internal constant VELO_OP_USDC = 0x0df083de449F75691fc5A36477a6f3284C269108;
+	address internal constant VELO_SNX_USDC = 0x71d53B5B7141E1ec9A3Fc9Cc48b4766102d14A4A; 
+	address internal constant VELO_sUSD_USDC = 0x6d5BA400640226e24b50214d2bBb3D4Db8e6e15a; 
+	address internal constant VELO_DAI_USDC = 0x19715771E30c93915A5bbDa134d782b81A820076; 
+	address internal constant VELO_FRAX_USDC = 0x8542DD4744edEa38b8a9306268b08F4D26d38581; 
+	address internal constant VELO_USDT_USDC = 0x2B47C794c3789f499D8A54Ec12f949EeCCE8bA16; 
+	address internal constant VELO_LUSD_USDC = 0xf04458f7B21265b80FC340dE7Ee598e24485c5bB; 
 
 	//yearn
 	address internal constant yvUSDC = 0xaD17A225074191d5c8a37B50FdA1AE278a2EE6A2; 
@@ -60,11 +67,6 @@ contract IBTokenMappings {
 	address internal constant yvUSDT = 0xFaee21D0f0Af88EE72BB6d68E54a90E6EC2616de; 
 	address internal constant yvWETH = 0x5B977577Eb8a480f63e11FC615D6753adB8652Ae; 
 
-	//not used for now
-	address internal constant VELO_sUSD_USDC = 0xd16232ad60188B68076a235c65d692090caba155; 
-	address internal constant VELO_DAI_USDC = 0x4F7ebc19844259386DBdDB7b2eB759eeFc6F8353; 
-	address internal constant VELO_FRAX_USDC = 0xAdF902b11e4ad36B227B84d856B229258b0b0465; 
-	address internal constant VELO_USDT_USDC = 0xe08d427724d8a2673FE0bE3A81b7db17BE835B36; 
 
 	
 	constructor() {
@@ -73,8 +75,14 @@ contract IBTokenMappings {
 		tokenMappings[VELO_wstETH_ETH] = WETH; 	
 		stable[VELO_wstETH_ETH] = false; //has more liquidity than stable pair
 
+		tokenMappings[VELO_rETH_ETH] =0xf04458f7B21265b80FC340dE7Ee598e24485c5bB WETH; 
+		stable[VELO_rETH_ETH] = false; 
+
 		tokenMappings[VELO_ETH_USDC] = WETH; 	
 		stable[VELO_ETH_USDC] = false; 
+
+		tokenMappings[VELO_LUSD_ETH] = WETH; 
+		stable[VELO_LUSD_ETH] = false; 
 
 		tokenMappings[VELO_OP_ETH] = WETH; 	
 		stable[VELO_OP_ETH] = false;  
@@ -98,6 +106,9 @@ contract IBTokenMappings {
 
 		tokenMappings[VELO_USDT_USDC] = USDC; 	
 		stable[VELO_USDT_USDC] = true; 
+
+		tokenMappings[VELO_LUSD_USDC] = USDC; 
+		stable[VELO_LUSD_USDC] = true; 
 		
 		//shangai shakedown	
 		beetsLookup[0x7B50775383d3D6f0215A8F290f2C9e2eEBBEceb2] = SHANGHAI_SHAKEDOWN; 

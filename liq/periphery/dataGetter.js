@@ -10,7 +10,6 @@ const lendingPool = new web3.eth.Contract(
 ); 
 
 let tranches = []; 
-//let loans = [];
 
 //simple: 
 //	all we want to do is store the user in an array with the tranche they've deposited into
@@ -18,20 +17,100 @@ let tranches = [];
 //	if we find one that can be liquidated, we will query their loan data from the subgraph
 //
 //periodically, we can query loans of users to determine if they are still actively borrowing through the subgraph, if they aren't we can remove them
+//if for whatever reason, the service needs to be restarted, we can use this to repopulate the tranches array with relevant data before reading the events from onchain 
+async function initializeTranchesArray() {	
+	let output = []; 
+	await axios.post(api_url, { 
+		query: `{
+		  users(where: {borrowedReservesCount_gt:0}) {
+			id
+			borrowedReservesCount
+    		borrowReserve: reserves(where: {currentTotalDebt_gt: 0}) {
+    		  reserve {
+    		    tranche {
+    		      id
+    		    }
+    		}
+    	}
+	}
+}`
+	}).then((res) => {
+		//verify that the array is empty
+		if (tranches.length == 0) {
+			const data = res.data.data; 
+			let trancheData; 
+			for (let i = 0; i < data.users.length; i++) {
+				const user = data.users[i]; 
+				for (let j = 0; j < user.borrowReserve.length; j++) {
+					trancheData = {
+						id: user.borrowReserve[j].reserve.tranche.id,
+						user: user.id
+					}
+					tranches.push(trancheData); 
+				}
+			}
 
-async function subscribe() {
+		}
+	
+		let temp = [];  
+		for (let i in tranches) {
+			const trancheId = tranches[i].id; 	
+			if (temp.length == 0 || !temp.includes(trancheId)) {
+				temp.push(trancheId); 
+			}
+
+		}
+
+		let trancheTemp = []; 
+		for (i in temp) {
+			let tranche = {
+				id: temp[i],
+				users: []
+			}
+			trancheTemp.push(tranche); 
+		}
+		
+		for (let i in tranches) {
+			for (let j in trancheTemp) {
+				if (tranches[i].id == trancheTemp[j].id) {
+					trancheTemp[j].users.push(tranches[i].user); 			
+				}
+			}
+		}
+		
+		tranches = trancheTemp; 
+	});
+	//console.log(tranches); 
+	console.log("tranches initialized from subgraph data \n"); 
+}
+
+//helper
+function getIndex(tranche) {
+		
+	for (i in tranches) {
+		if (tranches[i].id == tranche) {
+			return i;
+		}
+	}
+	
+	return -1; 
+}
+
+//initializeTranchesArray(); 
+
+async function getBorrowEvents() {
 	//only check borrow events since we only care about if they're actively borrowing
 	lendingPool.events.Borrow({fromBlock: "latest"},
 		(events) => {
-			filterEvents(event); 
+			filterEvents(events); 
 	}); 
 
 }
 
-function filterEvents(eventData, type) {	
+function filterEvents(eventData) {	
 	let userId = eventData.returnValues.user;
 	let trancheId = eventData.returnValues.tranche; 
-	const index = tranches.indexOf(tranche => trache.id == trancheId); 
+	const index = getIndex(trancheId); 
 	if (index == -1) {
 		let tranche = {
 			id: trancheId,
@@ -41,7 +120,6 @@ function filterEvents(eventData, type) {
 		tranche.users.push(userId); 
 		tranches.push(tranche); 
 	} else {
-
 		if (!tranches[index].users.includes(userId)) {
 			tranches[index].users.push(userId); 
 		}
@@ -89,7 +167,7 @@ async function getLiquidationData() {
 	return liquidatable; 
 }
 
-module.exports = { getLiquidatableAccounts, getLiquidationData }; 
+module.exports = { getLiquidatableAccounts, getLiquidationData, initializeTranchesArray, getBorrowEvents }; 
 
 //NOTE: can return multiple borrows/collateral per tranche per user
 //TODO: maybe return only relevant collateral for tranche?
@@ -186,7 +264,7 @@ async function removeUsersWithoutActiveLoans() {
 	}
 }
 
-removeUsersWithoutActiveLoans(); 
+//removeUsersWithoutActiveLoans(); 
 
 async function getHealthFactor(user, tranche) {
 	const accountData = await lendingPool.methods.getUserAccountData(user, tranche, false).call(); 

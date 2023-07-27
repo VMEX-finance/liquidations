@@ -7,7 +7,6 @@ import {IPoolAddressesProvider} from "aave-v3-core/contracts/interfaces/IPoolAdd
 
 //vmex lending pool
 import {ILendingPool} from "./interfaces/ILendingPool.sol"; 
-
 //periphery
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
 import {PeripheralLogic} from "./PeripheralLogic.sol"; 
@@ -21,7 +20,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 
 	IPoolAddressesProvider internal constant aaveAddressesProvider = 
 		IPoolAddressesProvider(0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb); //OP
-
+	
 	PeripheralLogic public peripheralLogic; 
 	Mothership public mothership; 
 
@@ -88,7 +87,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	//	decodedParams.debtAsset,
 	//	decodedParams.trancheId,
 	//	decodedParams.user,
-	//	decodedParams.debtAmount,
+	//	type(uint256).max, //max allowable collateral to be liquidated
 	//	false //no vToken/aToken
 	//); 
 

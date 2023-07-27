@@ -160,7 +160,7 @@ async function buildRoute(tokenIn, tokenOut, amount) {
 
 //buildRoute(); 
 
-module.exports = { mainTest, buildRoute }; 
+module.exports = { main, mainTest }; 
 
 //NOTE: if there is only a single hop, we want the path array to be a length of 1
 async function buildParams(route, decimalsIn, decimalsOut, tokenInAddress) {

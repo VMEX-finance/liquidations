@@ -9,7 +9,24 @@ const lendingPool = new web3.eth.Contract(
 	lending_pool_address
 ); 
 //NOTE: TEST FILE ONLY -- WATCHING LIVE AAVE V2 POOLS
-
+let reserves = [
+  {
+    id: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    users: [ '0x35808696D0355B26DbA97d140eE999A6f7509AfE' ]
+  },
+  {
+    id: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
+    users: [ '0xCF2D25f4eC502c3EF7b49b4c0247B01096Ad43c9' ]
+  },
+  {
+    id: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
+    users: [ '0x35808696D0355B26DbA97d140eE999A6f7509AfE' ]
+  },
+  {
+    id: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+    users: [ '0x80Aca0C645fEdABaa20fd2Bf0Daf57885A309FE6' ]
+  }
+] 
 
 async function subscribe() {
 	//subscribe to borrow and withdraw events latest block only
@@ -18,31 +35,58 @@ async function subscribe() {
 	lendingPool.events.Borrow({fromBlock: 'latest'})
 		.on('data', (event) => {
 			console.log(event); 
+			filterEvents(event); 
 		});
 	lendingPool.events.Deposit({fromBlock: 'latest'})
 		.on('data', (event) => {
 			console.log(event); 
+			filterEvents(event); 
 		});
 	lendingPool.events.Withdraw({fromBlock: 'latest'})
 		.on('data', (event) => {
 			console.log(event); 
+			filterEvents(event); 
 		});
 }
 
-//subscribe(); 
+subscribe(); 
 
-//async function getEvents() {
-//	let currentBlock = await web3.eth.getBlockNumber(); 
-//	let historicalBlock = currentBlock - 100;
-//
-//	const events = await lendingPool.getPastEvents(
-//		'Deposit', 
-//		{fromBlock: historicalBlock, toBlock: currentBlock}); 
-//
-//	console.log(events[0].returnValues); 
-//}
-//
-//getEvents(); 
+async function filterEvents(eventData) {	
+	let userId = eventData.returnValues.user;
+	let reserveId = eventData.returnValues.reserve; 
+	const index = getIndex(reserveId); 
+	if (index == -1) {
+		let res = {
+			id: reserveId,
+			users: []
+		};
+		
+		res.users.push(userId); 
+		reserves.push(res); 
+	} else {
+		if (!reserves[index].users.includes(userId)) {
+			reserves[index].users.push(userId); 
+		}
+	}
+
+	console.log(reserves); 
+}
+
+function getIndex(reserve) {
+	//console.log(reserves); 
+	//let reserveId = reserve; 
+	for (i in reserves) {
+		if (reserves[i].id == reserve) {
+			console.log(i); 
+			return i;
+		}
+	}
+	
+	console.log(-1); 
+	return -1; 
+}
+
+//getIndexTest("0xC02CaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"); 
 
 
 function testNestedObjects() {
@@ -71,7 +115,7 @@ function testNestedObjects() {
 	console.log(tranches); 
 }
 
-testNestedObjects(); 
+//testNestedObjects(); 
 
 
 
