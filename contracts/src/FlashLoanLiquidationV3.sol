@@ -113,7 +113,7 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase, Test {
 	//swap back after the flashloan if necessary	
 	if (decodedParams.swapAfterFlashloan.to != decodedParams.swapAfterFlashloan.from) {
 		PeripheralLogic.SwapData memory swapAfterFlashloan = decodedParams.swapAfterFlashloan; 
-		decodedParams.swapAfterFlashloan.amount = afterLiquidationBalance; 
+		swapAfterFlashloan.amount = afterLiquidationBalance; 
 		IERC20(decodedParams.collateralAsset).transfer(
 			address(peripheralLogic), 
 			swapAfterFlashloan.amount

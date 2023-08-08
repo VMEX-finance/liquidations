@@ -75,7 +75,7 @@ contract IBTokenMappings {
 		tokenMappings[VELO_wstETH_ETH] = WETH; 	
 		stable[VELO_wstETH_ETH] = false; //has more liquidity than stable pair
 
-		tokenMappings[VELO_rETH_ETH] =0xf04458f7B21265b80FC340dE7Ee598e24485c5bB WETH; 
+		tokenMappings[VELO_rETH_ETH] = WETH; 
 		stable[VELO_rETH_ETH] = false; 
 
 		tokenMappings[VELO_ETH_USDC] = WETH; 	

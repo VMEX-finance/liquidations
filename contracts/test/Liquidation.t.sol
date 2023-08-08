@@ -30,7 +30,7 @@ contract LiquidationTest is Test {
 	address internal constant CRV_sUSD_3CRV = 0x061b87122Ed14b9526A813209C8a59a633257bAb; //crv
 
 	//test velo unwraps
-	address internal constant VELO_wstETH_ETH = 0xc6C1E8399C1c33a3f1959f2f77349D74a373345c; 
+	address internal constant VELO_wstETH_ETH = 0x6dA98Bde0068d10DDD11b468b197eA97D96F96Bc; 
 
 	//test beets unwraps
 	address internal constant SHANGHAI_SHAKEDOWN = 0x7B50775383d3D6f0215A8F290f2C9e2eEBBEceb2; 

@@ -46,7 +46,9 @@ contract PeripheralLogic is Test {
 	FlashLoanLiquidation internal flashLoanLiquidation; 
 
 	IVeloRouter internal constant veloRouter = 
-		IVeloRouter(0x9c12939390052919aF3155f41Bf4160Fd3666A6f); 
+		IVeloRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858); 
+
+	address internal constant v2Factory = 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a; 
 
 	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
 	
@@ -70,10 +72,8 @@ contract PeripheralLogic is Test {
 	function _swap(SwapData memory swapData) external returns (uint256 amountOut) {
 		uint256 swapLength = swapData.path.length; 
 		IERC20(swapData.from).approve(address(swapRouter), swapData.amount); 
-
 		if (swapLength == 1) {
 			uint24 fee = swapData.path[0].fee; 
-
 			ISwapRouter.ExactInputSingleParams memory params = 
 				ISwapRouter.ExactInputSingleParams({
 					tokenIn: swapData.from, //token we have from flashloan
@@ -90,17 +90,16 @@ contract PeripheralLogic is Test {
 			return amountOut; 
 
 		} else {
-			
-			//TODO: test with multiple intermediary tokens, kind of scuffed			
 			bytes memory pre; 
 			for (uint8 i = 0; i < swapData.path.length; i++) {
-				pre = abi.encodePacked(
-					swapData.path[i].tokenIn,
+				bytes memory tokenAndFee = abi.encodePacked(
+					swapData.path[i].tokenIn, 
 					swapData.path[i].fee
-				);
+				); 
+				pre = abi.encodePacked(pre, tokenAndFee); 
 			}
-			bytes memory post = abi.encodePacked(swapData.to); 
-			bytes memory path = abi.encodePacked(pre, post); 
+
+			bytes memory path = abi.encodePacked(pre, swapData.to); 
 
 			ISwapRouter.ExactInputParams memory params = 
 				ISwapRouter.ExactInputParams({
@@ -110,7 +109,9 @@ contract PeripheralLogic is Test {
 					amountIn: swapData.amount,
 					amountOutMinimum: swapData.minOut	
 				}); 	
-				
+
+			amountOut = swapRouter.exactInput(params); 
+			console.log(amountOut); 		
 			return amountOut; 
 		}
 	}
@@ -268,18 +269,22 @@ contract PeripheralLogic is Test {
 	function _swapVelo(
 		address from, 
 		address to,
-	   	uint256 amountIn, 
+	  uint256 amountIn, 
 		bool stable
 	) internal returns (uint256[] memory) {
+		IVeloRouter.Route[] memory route = new IVeloRouter.Route[](1); 
+		route[0] = IVeloRouter.Route({
+			from: from,
+			to: to,
+			stable: stable,
+			factory: v2Factory
+		}); 
 
 		IERC20(from).approve(address(veloRouter), amountIn); 
-		address[] memory veloPath = new address[](2); 
-		uint256[] memory amounts = veloRouter.swapExactTokensForTokensSimple(
+		uint256[] memory amounts = veloRouter.swapExactTokensForTokens(
 			amountIn,
 			0,
-			from,
-			to,
-			stable,
+			route,
 			address(flashLoanLiquidation), 
 			block.timestamp //deadline
 		);
@@ -326,6 +331,11 @@ contract PeripheralLogic is Test {
 				exitPoolRequest
 			); 
 
+	}
+
+	function addBytes(bytes memory base, bytes memory bytesToAdd) internal pure returns(bytes memory returnBytes) {
+		returnBytes = abi.encodePacked(base, bytesToAdd); 
+		return returnBytes; 
 	}
 
 	receive() external payable {} 
