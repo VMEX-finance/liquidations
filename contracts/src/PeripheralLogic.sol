@@ -2,13 +2,11 @@
 pragma solidity >=0.8.0; 
 
 import {ISwapRouter} from "./interfaces/ISwapRouter.sol"; import {IUniswapV3Factory} from "./interfaces/IFactory.sol"; 
-import {IBeefyVault} from "./interfaces/IBeefyVault.sol"; 
 import {ICurveFi} from "./interfaces/ICurveFi.sol"; 
 import {IWETH} from "./interfaces/IWeth.sol"; 
 import {IVeloPair} from "./interfaces/IVeloPair.sol"; 
 import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
 import {IVault, IAsset} from "./interfaces/IBalancerVault.sol"; 
-import {IYearnVault} from "./interfaces/IYearnVault.sol"; 
 import {IBTokenMappings} from "./IBTokenMappings.sol"; 
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
 
@@ -18,9 +16,10 @@ contract PeripheralLogic {
 
 	enum Protocol {
 		CURVE,
-		VELODROME,
-		BEETHOVEN,
-		YEARN,
+        BALANCER,
+        CAMELOT,
+        CHRONOS, //for later
+        GMX, //for later
 		NONE
 	}
 
@@ -41,14 +40,16 @@ contract PeripheralLogic {
 
 	IBTokenMappings internal tokenMappings; 	
 	FlashLoanLiquidation internal flashLoanLiquidation; 
+       
+    //v2 seems to have more liquidity rn, so we'll wrap that 
+    ICamelotRouter internal camelotRouter = 
+        ICamelotRouter(0xc873fEcbd354f5A56E00E710B90EF4201db2448d); 
 
-	IVeloRouter internal constant veloRouter = 
-		IVeloRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858); 
+	address internal constant camelotv2Factory = 0x6EcCab422D763aC031210895C81787E87B43A652; 
 
-	address internal constant v2Factory = 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a; 
-
-	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
-	
+	//bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
+    
+    //univ3
 	ISwapRouter public swapRouter = 
 		ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564); //same on ETH/OP/ARB/POLY
 
@@ -56,7 +57,6 @@ contract PeripheralLogic {
 		IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984); 
 
 	IVault internal balancerVault = IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8); 
-
 
 	constructor(IBTokenMappings _tokenMappings, FlashLoanLiquidation _flashLoanLiquidation) {
 		tokenMappings = _tokenMappings; 	
@@ -112,10 +112,9 @@ contract PeripheralLogic {
 		}
 	}
 
-	//unwraps a vault token if needed, can be curve, beefy, or beethoven
+	//unwraps any vault or lp token to a base token, either USDC.e or WETH
 	function _unwrapIBToken(address collateralAsset, Protocol protocol) external returns (uint256, address) {
 		if (protocol == Protocol.CURVE) { 
-			//withdraw beefy LP
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
 
 			uint256 amountWithdrawnFromCurve =
@@ -124,15 +123,16 @@ contract PeripheralLogic {
 			IERC20(underlyingToSwapFor).transfer(address(flashLoanLiquidation), amountWithdrawnFromCurve);
 			return (amountWithdrawnFromCurve, underlyingToSwapFor);
 
-		} else if (protocol == Protocol.VELODROME) { //velodrome
+		} else if (protocol == Protocol.CAMELOT) {
 				
 			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
-			bool stable = tokenMappings.stable(collateralAsset); 
 			uint256 amountLP = 
 				IERC20(collateralAsset).balanceOf(address(this)); 	
 
 			//underlying VELO lp
-			(address token0, address token1) = IVeloPair(collateralAsset).tokens(); 
+            address token0 = ICamelotPair(collateralAsset).token0(); 
+            address token1 = ICamelotPair(collateralAsset).token1(); 
+
 			_removeVeloLiquidity(collateralAsset, token0, token1, amountLP, stable); 
 
 			//swap for underlying desired
@@ -182,7 +182,8 @@ contract PeripheralLogic {
 					); 
 		}
 	}
-
+    
+    //TODO: redo for current curve tokens
 	function _unwrapCurveToken(address collateralAsset, address underlyingToSwapFor) internal returns(uint256) {
 
 		uint256 amountWithdrawnFromCurve; 	
@@ -201,10 +202,9 @@ contract PeripheralLogic {
 			ICurveFi curvePool = ICurveFi(tokenMappings.wstETH_CRV_POOL()); 
 
 			//remove liquidity from curve, get ETH back
-			//TODO approval needed?
 			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 0, 1); //slippage @ 1 for now
 			uint256 afterEthbalance = address(this).balance; 
-			uint256 ethDif = afterEthbalance - beforeEthBalance; //leave some for gas
+			uint256 ethDif = afterEthbalance - beforeEthBalance;
 			IWETH(tokenMappings.WETH()).deposit{value: ethDif}(); 
 
 			amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
@@ -230,21 +230,18 @@ contract PeripheralLogic {
 
 	}
 
-	function _removeVeloLiquidity(
+	function _removeCamelotLiquidity(
 		address lpToken,
 		address token0, 
 		address token1,
 		uint256 amount, 
-		bool stable
 	) internal returns (uint256) {
-			//get underlying VELO tokens via VeloPair
 			
 			//remove liquidity via router
-			IERC20(lpToken).approve(address(veloRouter), amount); 
-			veloRouter.removeLiquidity(	
+			IERC20(lpToken).approve(address(camelotRouter), amount); 
+			camelotRouter.removeLiquidity(	
 				token0,
 				token1,
-				stable, 
 				amount,
 				0, //can use quote
 				0, //can use quote
@@ -254,33 +251,28 @@ contract PeripheralLogic {
 	}
 
 	//swap using velo, easiest to do, maybe not the best liquidity(?)
-	function _swapVelo(
+	function _swapCamelot(
 		address from, 
 		address to,
-	  uint256 amountIn, 
-		bool stable
+	    uint256 amountIn, 
 	) internal returns (uint256[] memory) {
-		IVeloRouter.Route[] memory route = new IVeloRouter.Route[](1); 
-		route[0] = IVeloRouter.Route({
-			from: from,
-			to: to,
-			stable: stable,
-			factory: v2Factory
-		}); 
 
-		IERC20(from).approve(address(veloRouter), amountIn); 
-		uint256[] memory amounts = veloRouter.swapExactTokensForTokens(
+        address[] memory path = new address[](2); 
+        path[0] = from; 
+        path[1] = to; 
+
+		IERC20(from).approve(address(camelotRouter), amountIn); 
+		camelotRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
 			amountIn,
 			0,
-			route,
+			path,
 			address(flashLoanLiquidation), 
 			block.timestamp //deadline
 		);
-		
-		return amounts;  	
 	}
-
-	function _withdrawBeets(
+    
+    //TODO: tweak this for all balancer pools
+	function _withdrawBalancer(
 		address collateralAsset, 
 		 IERC20 poolToken0, 
 		 IERC20 poolToken1, 
