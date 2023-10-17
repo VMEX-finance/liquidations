@@ -12,9 +12,8 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {FlashLoanLiquidation} from "./FlashLoanLiquidationV3.sol"; 
 
 
-import "forge-std/Test.sol";
 
-contract PeripheralLogic is Test {
+contract PeripheralLogic {
 
 	enum Protocol {
 		CURVE,
@@ -49,7 +48,7 @@ contract PeripheralLogic is Test {
 
 	address internal constant camelotv2Factory = 0x6EcCab422D763aC031210895C81787E87B43A652; 
 
-	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
+	bytes32 internal constant SHANGHAI_SHAKEDOWN = 0x9791d590788598535278552eecd4b211bfc790cb000000000000000000000498; 
     
     //univ3
 	ISwapRouter public swapRouter = 
@@ -134,9 +133,6 @@ contract PeripheralLogic is Test {
 			//underlying Camelot lp
             address token0 = ICamelotPair(collateralAsset).token0(); 
             address token1 = ICamelotPair(collateralAsset).token1(); 
-			console.log("token0", token0); 
-			console.log("token1", token1); 
-			console.log("amount lp", amountLP); 
 
 			_removeCamelotLiquidity(collateralAsset, token0, token1, amountLP); 
 
@@ -155,12 +151,11 @@ contract PeripheralLogic is Test {
 		} else if (protocol == Protocol.BALANCER) { //BPT withdraw
 			//balancer API
 			bytes32 poolId = tokenMappings.balancerLookup(collateralAsset); 
-			console.logBytes32(poolId); 
 			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
 
 
 			uint256 exitTokenIndex; //WETH
-			if (poolId == SHAGHAI_SHAKEDOWN) {
+			if (poolId == SHANGHAI_SHAKEDOWN) {
 				exitTokenIndex = 1; 
 			} else {
 				exitTokenIndex = 0; 
@@ -170,8 +165,10 @@ contract PeripheralLogic is Test {
 				collateralAsset, 
 				poolTokens[0], 
 				poolTokens[1], 
+				poolTokens[2],
 				exitTokenIndex,
-				poolId); 
+				poolId
+			); 
 			
 			return (
 						IERC20(tokenMappings.WETH()).balanceOf(address(flashLoanLiquidation)),
@@ -270,11 +267,13 @@ contract PeripheralLogic is Test {
 		address collateralAsset, 
 		 IERC20 poolToken0, 
 		 IERC20 poolToken1, 
+		 IERC20 poolToken2,
 		uint256 exitTokenIndex,
 		bytes32 poolId
 	) internal {
 
-			uint256[] memory minAmountsOut = new uint256[](2);
+
+			uint256[] memory minAmountsOut = new uint256[](3);
 			IERC20(collateralAsset).approve(
 				address(balancerVault),
 				IERC20(collateralAsset).balanceOf(address(this))
@@ -286,9 +285,10 @@ contract PeripheralLogic is Test {
 				exitTokenIndex	
 			);
 
-			IAsset[] memory assets = new IAsset[](2); 
+			IAsset[] memory assets = new IAsset[](3); 
 				assets[0] = IAsset(address(poolToken0)); 
 				assets[1] = IAsset(address(poolToken1)); 
+				assets[2] = IAsset(address(poolToken2)); 
 
 			IVault.ExitPoolRequest memory exitPoolRequest = IVault.ExitPoolRequest({
 				assets: assets,
@@ -304,6 +304,7 @@ contract PeripheralLogic is Test {
 				payable(address(flashLoanLiquidation)), //recipient
 				exitPoolRequest
 			); 
+
 
 	}
 
