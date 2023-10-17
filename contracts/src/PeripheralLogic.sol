@@ -4,15 +4,17 @@ pragma solidity >=0.8.0;
 import {ISwapRouter} from "./interfaces/ISwapRouter.sol"; import {IUniswapV3Factory} from "./interfaces/IFactory.sol"; 
 import {ICurveFi} from "./interfaces/ICurveFi.sol"; 
 import {IWETH} from "./interfaces/IWeth.sol"; 
-import {IVeloPair} from "./interfaces/IVeloPair.sol"; 
-import {IVeloRouter} from "./interfaces/IVeloRouter.sol"; 
+import {ICamelotRouter} from "./interfaces/ICamelotRouter.sol"; 
+import {ICamelotPair} from "./interfaces/ICamelotPair.sol"; 
 import {IVault, IAsset} from "./interfaces/IBalancerVault.sol"; 
 import {IBTokenMappings} from "./IBTokenMappings.sol"; 
 import {IERC20} from "forge-std/interfaces/IERC20.sol"; 
-
 import {FlashLoanLiquidation} from "./FlashLoanLiquidationV3.sol"; 
 
-contract PeripheralLogic {
+
+import "forge-std/Test.sol";
+
+contract PeripheralLogic is Test {
 
 	enum Protocol {
 		CURVE,
@@ -47,7 +49,7 @@ contract PeripheralLogic {
 
 	address internal constant camelotv2Factory = 0x6EcCab422D763aC031210895C81787E87B43A652; 
 
-	//bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
+	bytes32 internal constant SHAGHAI_SHAKEDOWN = 0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b; 
     
     //univ3
 	ISwapRouter public swapRouter = 
@@ -129,38 +131,33 @@ contract PeripheralLogic {
 			uint256 amountLP = 
 				IERC20(collateralAsset).balanceOf(address(this)); 	
 
-			//underlying VELO lp
+			//underlying Camelot lp
             address token0 = ICamelotPair(collateralAsset).token0(); 
             address token1 = ICamelotPair(collateralAsset).token1(); 
+			console.log("token0", token0); 
+			console.log("token1", token1); 
+			console.log("amount lp", amountLP); 
 
-			_removeVeloLiquidity(collateralAsset, token0, token1, amountLP, stable); 
+			_removeCamelotLiquidity(collateralAsset, token0, token1, amountLP); 
 
 			//swap for underlying desired
 			uint256 amountToSwap; 
 			if (token0 == underlyingToSwapFor) { 
 				amountToSwap = IERC20(token1).balanceOf(address(this)); 
-				_swapVelo(token1, token0, amountToSwap, stable); 
+				_swapCamelot(token1, token0, amountToSwap); 
 			 } else {
 				amountToSwap = IERC20(token0).balanceOf(address(this)); 
-				_swapVelo(token0, token1, amountToSwap, stable); 
+				_swapCamelot(token0, token1, amountToSwap); 
 			 }
 				return (IERC20(underlyingToSwapFor).balanceOf(address(flashLoanLiquidation)),
 								underlyingToSwapFor);
 
-		} else if (protocol == Protocol.YEARN) {
-			//if collateral is any of these, we can attempt to flashloan any of these underlying
-			//collat asset is vault 
-			address underlyingToSwapFor = tokenMappings.tokenMappings(collateralAsset); //WETH or USDC
-			IYearnVault yearnVault = IYearnVault(collateralAsset); 
-			uint256 amountShares = 
-				IERC20(collateralAsset).balanceOf(address(this)); 	
-			uint256 amountWithdrawn = yearnVault.withdraw(amountShares, address(flashLoanLiquidation)); 
-			return (amountWithdrawn, yearnVault.token()); 
-
-		} else { //BPT withdraw
+		} else if (protocol == Protocol.BALANCER) { //BPT withdraw
 			//balancer API
-			bytes32 poolId = tokenMappings.beetsLookup(collateralAsset); 
+			bytes32 poolId = tokenMappings.balancerLookup(collateralAsset); 
+			console.logBytes32(poolId); 
 			(IERC20[] memory poolTokens, , ) = balancerVault.getPoolTokens(poolId); 
+
 
 			uint256 exitTokenIndex; //WETH
 			if (poolId == SHAGHAI_SHAKEDOWN) {
@@ -169,7 +166,7 @@ contract PeripheralLogic {
 				exitTokenIndex = 0; 
 			}
 
-			_withdrawBeets(
+			_withdrawBalancer(
 				collateralAsset, 
 				poolTokens[0], 
 				poolTokens[1], 
@@ -191,10 +188,6 @@ contract PeripheralLogic {
 
 		if (underlyingToSwapFor == tokenMappings.WETH()) {
 
-			uint256 beefyShares = IERC20(collateralAsset).balanceOf(address(this)); 
-			IBeefyVault beefyVault = IBeefyVault(collateralAsset); 
-			beefyVault.withdraw(beefyShares); // --> receive underlying LP tokens
-
 			//checking for ether
 			uint256 beforeEthBalance = address(this).balance; 
 			amountUnderlyingLP = 
@@ -210,20 +203,20 @@ contract PeripheralLogic {
 			amountWithdrawnFromCurve = IERC20(tokenMappings.WETH()).balanceOf(address(this)); 
 
 		} else {
-			//USDC route//remove liquidity from sUSD pool, get 3crv tokens	
+			if (collateralAsset == tokenMappings.CRV_USDCE_USDT()) {
 			amountUnderlyingLP = 
-				IERC20(tokenMappings.sUSD_THREE_CRV()).balanceOf(address(this)); 
-			ICurveFi curvePool = ICurveFi(tokenMappings.sUSD_THREE_CRV()); 
+				IERC20(tokenMappings.CRV_USDCE_USDT()).balanceOf(address(this)); 
+			ICurveFi curvePool = ICurveFi(tokenMappings.CRV_USDCE_USDT()); 
+			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 0, 1);
+			} else {
+			amountUnderlyingLP = 
+				IERC20(tokenMappings.CRV_FRAX_USDCE()).balanceOf(address(this)); 
+			ICurveFi curvePool = ICurveFi(tokenMappings.CRV_FRAX_USDCE()); 
 			curvePool.remove_liquidity_one_coin(amountUnderlyingLP, 1, 1);
+			}
 
-			//now we can remove 3crv token liquidity and unwrap to USDC
-			uint256 underlying3CrvAmount = 
-					IERC20(tokenMappings.THREE_CRV()).balanceOf(address(this)); 
-			ICurveFi crv3Pool = ICurveFi(tokenMappings.THREE_CRV()); 
-			crv3Pool.remove_liquidity_one_coin(underlying3CrvAmount, 1, 1); 
-
-
-			amountWithdrawnFromCurve = IERC20(tokenMappings.USDC()).balanceOf(address(this)); 
+			amountWithdrawnFromCurve =
+				IERC20(tokenMappings.USDC()).balanceOf(address(this)); 
 		}
 		
 		return amountWithdrawnFromCurve; 
@@ -234,7 +227,7 @@ contract PeripheralLogic {
 		address lpToken,
 		address token0, 
 		address token1,
-		uint256 amount, 
+		uint256 amount
 	) internal returns (uint256) {
 			
 			//remove liquidity via router
@@ -254,7 +247,7 @@ contract PeripheralLogic {
 	function _swapCamelot(
 		address from, 
 		address to,
-	    uint256 amountIn, 
+	    uint256 amountIn
 	) internal returns (uint256[] memory) {
 
         address[] memory path = new address[](2); 
@@ -267,6 +260,7 @@ contract PeripheralLogic {
 			0,
 			path,
 			address(flashLoanLiquidation), 
+			address(0), //ref
 			block.timestamp //deadline
 		);
 	}

@@ -14,34 +14,30 @@ import "../src/interfaces/IYearnVault.sol";
 contract LiquidationTest is Test {
 	IBTokenMappings internal tokenMappings; 
 	FlashLoanLiquidation internal flashLoanLiquidation; 
-	PeripheralLogic internal peripheralLogic; //all tokens are OP addresses address internal 
+	PeripheralLogic internal peripheralLogic; 
 	FlashLoanRouter internal flashLoanRouter; 
 	Mothership internal mothership; 
 
 
-	address internal WETH = 0x4200000000000000000000000000000000000006; 
+	address internal WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1; 
 	address internal DAI = 0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1;
-	address internal USDC = 0x7F5c764cBc14f9669B88837ca1490cCa17c31607; 
-	address internal OP = 0x4200000000000000000000000000000000000042; 
-	address internal USDT = 0x94b008aA00579c1307B0EF2c499aD98a8ce58e58; 
+	address internal USDC = 0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8; 
+	address internal ARB = 0x912CE59144191C1204E64559FE8253a0e49E6548; 
+	address internal USDT = 0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9; 
 
 	//test curve unwraps
-	address internal constant CRV_wstETH_ETH = 0x0892a178c363b4739e5Ac89E9155B9c30214C0c0; //beefy
-	address internal constant CRV_sUSD_3CRV = 0x061b87122Ed14b9526A813209C8a59a633257bAb; //crv
+	address internal constant CRV_wstETH_ETH = 0xDbcD16e622c95AcB2650b38eC799f76BFC557a0b; //beefy
+	address internal constant CRV_USDCE_USDT = 0x7f90122BF0700F9E7e1F688fe926940E8839F353; //crv
+	address internal constant CRV_FRAX_USDCE = 0xC9B8a3FDECB9D5b218d02555a8Baf332E5B740d5; 
 
-	//test velo unwraps
-	address internal constant VELO_wstETH_ETH = 0x6dA98Bde0068d10DDD11b468b197eA97D96F96Bc; 
+	//test camelot unwraps
+	address internal constant CAM_ETH_USDCE = 0x84652bb2539513BAf36e225c930Fdd8eaa63CE27; 
+	address internal constant CAM_USDCE_USDT = 0x1C31fB3359357f6436565cCb3E982Bc6Bf4189ae; 
 
-	//test beets unwraps
-	address internal constant SHANGHAI_SHAKEDOWN = 0x7B50775383d3D6f0215A8F290f2C9e2eEBBEceb2; 
-	address internal constant ROCKET_FUEL = 0x4Fd63966879300caFafBB35D157dC5229278Ed23; 
+	//test balancer unwraps
+	address internal constant SHANGHAI_SHAKEDOWN = 0x9791d590788598535278552EEcD4b211bFc790CB; 
+	address internal constant ROCKET_FUEL = 0xadE4A71BB62bEc25154CFc7e6ff49A513B491E81; 
 	
-	//test yearn unwraps
-	address internal constant yvUSDT = 0xFaee21D0f0Af88EE72BB6d68E54a90E6EC2616de; 
-	address internal constant yvUSDC = 0xaD17A225074191d5c8a37B50FdA1AE278a2EE6A2; 
-	address internal constant yvWETH = 0x5B977577Eb8a480f63e11FC615D6753adB8652Ae; 
-	address internal constant yvDAI = 0x65343F414FFD6c97b0f6add33d16F6845Ac22BAc; 
-
 	address internal user = address(69); 
 
     function setUp() public {
@@ -62,22 +58,11 @@ contract LiquidationTest is Test {
 			
 		//simulating liquidation profits
 		//deal(DAI, address(flashLoanLiquidation), 10 * 1e18); 
-		deal(USDC, address(mothership), 100 * 1e6); 
+		deal(WETH, address(mothership), 1 * 1e6); 
     }
 
 
-	//TODO:
-	//test that flashloan code is set up correctly
-	//test that params are working 
-	//test that amounts are returned
-	
-	//for tests, we're going to),
-	//address(tokenMappings),
-	//address(peripheralLogic),
-	//address(mothership) go liquidate a position where a user has deposited WETH as collat
-	//and has taken out a loan in USDC
 	function testFlashLoanBasicPath() public {
-
 		//simulating a loan where a user has taken out a loan in DAI using WETH as collateral
 		PeripheralLogic.Protocol protocol = PeripheralLogic.Protocol.NONE;
 		
@@ -135,6 +120,8 @@ contract LiquidationTest is Test {
 				swapAfterFlashloan: swapAfterFlashloan,
 				ibPath: ibPath
 			}); 
+
+		deal(USDC, address(flashLoanLiquidation), 2000 * 1e6); 
 
 		flashLoanLiquidation.flashLoanCall(data);
 	}
@@ -205,7 +192,7 @@ contract LiquidationTest is Test {
 	function testFlashLoanComplexPath() public {
 		//simulating a time where the borrowed token is not directly flashloanable and has a complex path
 		//first swap is WETH -> USDC
-		//second swap is USDC -> OP
+		//second swap is USDC -> ARB
 		PeripheralLogic.Protocol protocol = PeripheralLogic.Protocol.NONE;
 
 		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](2); 
@@ -225,7 +212,7 @@ contract LiquidationTest is Test {
 
 		PeripheralLogic.Path[] memory path2 = new PeripheralLogic.Path[](1); 
 		path2[0] = PeripheralLogic.Path({
-			tokenIn: OP,
+			tokenIn: ARB,
 			fee: 500,
 			isIBToken: false,
 			protocol: protocol	
@@ -242,7 +229,7 @@ contract LiquidationTest is Test {
 	
 		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
 			PeripheralLogic.SwapData({
-				to: OP,
+				to: ARB,
 				from: WETH,
 				amount: 1 * 1e18, //99 USD
 				minOut: 0,
@@ -262,8 +249,8 @@ contract LiquidationTest is Test {
 				});
 	
 
-		//assuming OP isn't directly flashloanable, our loan will actually be weth here
-		//beforeFlashloan will swap to OP, liquidate the debt, receive USDC, and then swap back to WETH
+		//assuming ARB isn't directly flashloanable, our loan will actually be weth here
+		//beforeFlashloan will swap to ARB, liquidate the debt, receive USDC, and then swap back to WETH
 		FlashLoanLiquidation.FlashLoanData memory data = 
 			FlashLoanLiquidation.FlashLoanData({
 				collateralAsset: USDC,
@@ -297,7 +284,7 @@ contract LiquidationTest is Test {
 
 		//simulate a flashloan where an IBtoken is recovered as collateral
 		//contracts needs it when unwrapping any IBtokens
-		deal(CRV_wstETH_ETH, address(flashLoanLiquidation), 3 * 1e18); 
+		deal(CRV_wstETH_ETH, address(flashLoanLiquidation), 0.5 * 1e18); 
 
 		PeripheralLogic.Path memory ibPath = 
 			PeripheralLogic.Path({
@@ -343,7 +330,7 @@ contract LiquidationTest is Test {
 	}
 
 	function testFlashloanIncludeIBTokenCurveUSD() public {
-		//simulating loan where CRV_sUSD_3CRV is collateral to take out a USDC loan
+		//simulating loan where CRV_USDCE_USDT is collateral to take out a USDC loan
 		PeripheralLogic.Protocol protocolN = PeripheralLogic.Protocol.NONE;
 		PeripheralLogic.Protocol protocolCurve = PeripheralLogic.Protocol.CURVE;
 		
@@ -357,11 +344,11 @@ contract LiquidationTest is Test {
 
 		//simulate a flashloan where an IBtoken is recovered as collateral
 		//contracts needs it when unwrapping any IBtokens
-		deal(CRV_sUSD_3CRV, address(flashLoanLiquidation), 3 * 1e18); 
+		deal(CRV_USDCE_USDT, address(flashLoanLiquidation), 3 * 1e18); 
 
 		PeripheralLogic.Path memory ibPath = 
 			PeripheralLogic.Path({
-				tokenIn: CRV_sUSD_3CRV,
+				tokenIn: CRV_USDCE_USDT,
 				fee: 0,
 				isIBToken: true,
 				protocol: protocolCurve //curve
@@ -389,7 +376,7 @@ contract LiquidationTest is Test {
 
 		FlashLoanLiquidation.FlashLoanData memory data = 
 			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: CRV_sUSD_3CRV,
+				collateralAsset: CRV_USDCE_USDT,
 				debtAsset: USDC,
 				debtAmount: 100 * 1e6,
 				trancheId: 0,
@@ -403,10 +390,10 @@ contract LiquidationTest is Test {
 
 	}
 
-	function testFlashloanIncludeIBTokenVelodrome() public {
-		//VELO_wstETH_ETH is collateral for a WETH borrow
+	function testFlashloanIncludeIBTokenCamelot() public {
+		//CAM_ETH_USDCE is collateral for a WETH borrow
 
-		PeripheralLogic.Protocol protocolVelo = PeripheralLogic.Protocol.VELODROME;
+		PeripheralLogic.Protocol protocolVelo = PeripheralLogic.Protocol.CAMELOT;
 
 		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
 		paths[0] = PeripheralLogic.Path({
@@ -418,14 +405,14 @@ contract LiquidationTest is Test {
 
 		//simulate a flashloan where an IBtoken is recovered as collateral
 		//contracts needs it when unwrapping any IBtokens
-		deal(VELO_wstETH_ETH, address(flashLoanLiquidation), 1 * 1e18); 
+		deal(CAM_ETH_USDCE, address(flashLoanLiquidation), 0.01 * 1e18); 
 
 		PeripheralLogic.Path memory ibPath = 
 			PeripheralLogic.Path({
-				tokenIn: VELO_wstETH_ETH,
+				tokenIn: CAM_ETH_USDCE,
 				fee: 0,
 				isIBToken: true,
-				protocol: protocolVelo //velodrome
+				protocol: protocolVelo 
 			}); 
 		
 		//not being used unless flashloaned token is different from debtAsset	
@@ -451,7 +438,7 @@ contract LiquidationTest is Test {
 
 		FlashLoanLiquidation.FlashLoanData memory data = 
 			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: VELO_wstETH_ETH,
+				collateralAsset: CAM_ETH_USDCE,
 				debtAsset: WETH,
 				debtAmount: 1 * 1e18,
 				trancheId: 0,
@@ -464,10 +451,10 @@ contract LiquidationTest is Test {
 			flashLoanLiquidation.flashLoanCall(data); 
 	}
 
-	function testFlashloanInlcudeIBTokenBeetsShanghai() public {
+	function testFlashloanInlcudeIBTokenBalancerShanghai() public {
 		//simulate a liquidation on a loan where beets is collateral for a WETH loan
 		//initial path only -- protocol not used
-		PeripheralLogic.Protocol protocolBeets = PeripheralLogic.Protocol.BEETHOVEN; 
+		PeripheralLogic.Protocol protocolBeets = PeripheralLogic.Protocol.BALANCER; 
 
 		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
 		paths[0] = PeripheralLogic.Path({
@@ -479,14 +466,14 @@ contract LiquidationTest is Test {
 
 		//simulate a flashloan where an IBtoken is recovered as collateral
 		//contracts needs it when unwrapping any IBtokens
-		deal(SHANGHAI_SHAKEDOWN, address(flashLoanLiquidation), 2 * 1e18); 
+		deal(SHANGHAI_SHAKEDOWN, address(flashLoanLiquidation), 1 * 1e18); 
 
 		PeripheralLogic.Path memory ibPath = 
 			PeripheralLogic.Path({
 				tokenIn: SHANGHAI_SHAKEDOWN,
 				fee: 0,
 				isIBToken: true,
-				protocol: protocolBeets //beets
+				protocol: protocolBeets
 			}); 
 		
 		//not being used unless flashloaned token is different from debtAsset	
@@ -525,315 +512,66 @@ contract LiquidationTest is Test {
 
 	}
 
-	function testFlashloanInlcudeIBTokenBeetsRocketPool() public {
-		//simulate a liquidation on a loan where beets is collateral for a WETH loan
-		//initial path only -- protocol not used
-		PeripheralLogic.Protocol protocolBeets = PeripheralLogic.Protocol.BEETHOVEN; 
-
-		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
-		paths[0] = PeripheralLogic.Path({
-			tokenIn: WETH,
-			fee: 100,
-			isIBToken: false,
-			protocol: protocolBeets
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(ROCKET_FUEL, address(flashLoanLiquidation), 2 * 1e18); 
-
-		PeripheralLogic.Path memory ibPath = 
-			PeripheralLogic.Path({
-				tokenIn: ROCKET_FUEL,
-				fee: 0,
-				isIBToken: true,
-				protocol: protocolBeets //beets
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
-			PeripheralLogic.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 1 * 1e18, 
-				minOut: 0,
-				path: paths
-			});
-
-		PeripheralLogic.SwapData memory swapAfterFlashloan = 
-			PeripheralLogic.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 0, 
-				minOut: 0,
-				path: paths
-			});
-
-		FlashLoanLiquidation.FlashLoanData memory data = 
-			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: ROCKET_FUEL,
-				debtAsset: WETH,
-				debtAmount: 1 * 1e18,
-				trancheId: 0,
-				user: user,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			}); 
-
-		flashLoanLiquidation.flashLoanCall(data); 
-
-	}
-
-	function testFlashloanInlcudeIBTokenYearnUSDT() public {
-		//simulate a liquidation on a loan where yearn is collateral for a WETH loan
-		//initial path only -- protocol not used
-		PeripheralLogic.Protocol YEARN = PeripheralLogic.Protocol.YEARN; 
-
-		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
-		paths[0] = PeripheralLogic.Path({
-			tokenIn: USDT,
-			fee: 0,
-			isIBToken: false,
-			protocol: YEARN
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(yvUSDT, address(flashLoanLiquidation), 100 * 1e6); 
-
-		PeripheralLogic.Path memory ibPath = 
-			PeripheralLogic.Path({
-				tokenIn: yvUSDT,
-				fee: 0,
-				isIBToken: true,
-				protocol: YEARN
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
-			PeripheralLogic.SwapData({
-				to: USDT,
-				from: USDT,
-				amount: 100 * 1e6, 
-				minOut: 0,
-				path: paths
-			});
-		
-		//usdt after unwrapped
-		PeripheralLogic.SwapData memory swapAfterFlashloan = 
-			PeripheralLogic.SwapData({
-				to: USDT,
-				from: USDT,
-				amount: 0, 
-				minOut: 0,
-				path: paths
-			});
-
-		FlashLoanLiquidation.FlashLoanData memory data = 
-			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: yvUSDT,
-				debtAsset: USDT,
-				debtAmount: 100 * 1e6,
-				trancheId: 0,
-				user: user,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			}); 
-
-		flashLoanLiquidation.flashLoanCall(data); 
-
-	}
-
-	function testFlashloanInlcudeIBTokenYearnUSDC() public {
-		//simulate a liquidation on a loan where yearn is collateral for a WETH loan
-		//initial path only -- protocol not used
-		PeripheralLogic.Protocol YEARN = PeripheralLogic.Protocol.YEARN; 
-
-		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
-		paths[0] = PeripheralLogic.Path({
-			tokenIn: USDC,
-			fee: 0,
-			isIBToken: false,
-			protocol: YEARN
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(yvUSDC, address(flashLoanLiquidation), 100 * 1e6); 
-
-		PeripheralLogic.Path memory ibPath = 
-			PeripheralLogic.Path({
-				tokenIn: yvUSDC,
-				fee: 0,
-				isIBToken: true,
-				protocol: YEARN
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
-			PeripheralLogic.SwapData({
-				to: USDC,
-				from: USDC,
-				amount: 100 * 1e6, 
-				minOut: 0,
-				path: paths
-			});
-		
-		//usdt after unwrapped
-		PeripheralLogic.SwapData memory swapAfterFlashloan = 
-			PeripheralLogic.SwapData({
-				to: USDC,
-				from: USDC,
-				amount: 0, 
-				minOut: 0,
-				path: paths
-			});
-
-		FlashLoanLiquidation.FlashLoanData memory data = 
-			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: yvUSDC,
-				debtAsset: USDC,
-				debtAmount: 100 * 1e6,
-				trancheId: 0,
-				user: user,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			}); 
-
-		flashLoanLiquidation.flashLoanCall(data); 
-
-	}
-
-	function testFlashloanInlcudeIBTokenYearnWETH() public {
-		//simulate a liquidation on a loan where yearn is collateral for a WETH loan
-		//initial path only -- protocol not used
-		PeripheralLogic.Protocol YEARN = PeripheralLogic.Protocol.YEARN; 
-
-		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
-		paths[0] = PeripheralLogic.Path({
-			tokenIn: WETH,
-			fee: 0,
-			isIBToken: false,
-			protocol: YEARN
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(yvWETH, address(flashLoanLiquidation), 1 * 1e18); 
-
-		PeripheralLogic.Path memory ibPath = 
-			PeripheralLogic.Path({
-				tokenIn: yvWETH,
-				fee: 0,
-				isIBToken: true,
-				protocol: YEARN
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
-			PeripheralLogic.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 1 * 1e18, 
-				minOut: 0,
-				path: paths
-			});
-		
-		//usdt after unwrapped
-		PeripheralLogic.SwapData memory swapAfterFlashloan = 
-			PeripheralLogic.SwapData({
-				to: WETH,
-				from: WETH,
-				amount: 0, 
-				minOut: 0,
-				path: paths
-			});
-
-		FlashLoanLiquidation.FlashLoanData memory data = 
-			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: yvWETH,
-				debtAsset: WETH,
-				debtAmount: 1 * 1e18,
-				trancheId: 0,
-				user: user,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			}); 
-
-		flashLoanLiquidation.flashLoanCall(data); 
-
-	}
-
-	function testFlashloanInlcudeIBTokenYearnDAI() public {
-		//simulate a liquidation on a loan where yearn is collateral for a DAI loan
-		//initial path only -- protocol not used
-		PeripheralLogic.Protocol YEARN = PeripheralLogic.Protocol.YEARN; 
-
-		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
-		paths[0] = PeripheralLogic.Path({
-			tokenIn: DAI,
-			fee: 0,
-			isIBToken: false,
-			protocol: YEARN
-		});
-
-		//simulate a flashloan where an IBtoken is recovered as collateral
-		//contracts needs it when unwrapping any IBtokens
-		deal(yvDAI, address(flashLoanLiquidation), 10 * 1e18); 
-
-		PeripheralLogic.Path memory ibPath = 
-			PeripheralLogic.Path({
-				tokenIn: yvDAI,
-				fee: 0,
-				isIBToken: true,
-				protocol: YEARN
-			}); 
-		
-		//not being used unless flashloaned token is different from debtAsset	
-		//in this case, there is no difference so it will not be checked 
-		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
-			PeripheralLogic.SwapData({
-				to: DAI,
-				from: DAI,
-				amount: 10 * 1e18, 
-				minOut: 0,
-				path: paths
-			});
-		
-		//usdt after unwrapped
-		PeripheralLogic.SwapData memory swapAfterFlashloan = 
-			PeripheralLogic.SwapData({
-				to: DAI,
-				from: DAI,
-				amount: 0, 
-				minOut: 0,
-				path: paths
-			});
-
-		FlashLoanLiquidation.FlashLoanData memory data = 
-			FlashLoanLiquidation.FlashLoanData({
-				collateralAsset: yvDAI,
-				debtAsset: DAI,
-				debtAmount: 10 * 1e18,
-				trancheId: 0,
-				user: user,
-				swapBeforeFlashloan: swapBeforeFlashloan,
-				swapAfterFlashloan: swapAfterFlashloan,
-				ibPath: ibPath
-			}); 
-
-		flashLoanLiquidation.flashLoanCall(data); 
-
-	}
-	
+//	function testFlashloanInlcudeIBTokenBeetsRocketPool() public {
+//		//simulate a liquidation on a loan where beets is collateral for a WETH loan
+//		//initial path only -- protocol not used
+//		PeripheralLogic.Protocol protocolBeets = PeripheralLogic.Protocol.BALANCER; 
+//
+//		PeripheralLogic.Path[] memory paths = new PeripheralLogic.Path[](1); 
+//		paths[0] = PeripheralLogic.Path({
+//			tokenIn: WETH,
+//			fee: 100,
+//			isIBToken: false,
+//			protocol: protocolBeets
+//		});
+//
+//		//simulate a flashloan where an IBtoken is recovered as collateral
+//		//contracts needs it when unwrapping any IBtokens
+//		deal(ROCKET_FUEL, address(flashLoanLiquidation), 2 * 1e18); 
+//
+//		PeripheralLogic.Path memory ibPath = 
+//			PeripheralLogic.Path({
+//				tokenIn: ROCKET_FUEL,
+//				fee: 0,
+//				isIBToken: true,
+//				protocol: protocolBeets //beets
+//			}); 
+//		
+//		//not being used unless flashloaned token is different from debtAsset	
+//		//in this case, there is no difference so it will not be checked 
+//		PeripheralLogic.SwapData memory swapBeforeFlashloan = 
+//			PeripheralLogic.SwapData({
+//				to: WETH,
+//				from: WETH,
+//				amount: 1 * 1e18, 
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		PeripheralLogic.SwapData memory swapAfterFlashloan = 
+//			PeripheralLogic.SwapData({
+//				to: WETH,
+//				from: WETH,
+//				amount: 0, 
+//				minOut: 0,
+//				path: paths
+//			});
+//
+//		FlashLoanLiquidation.FlashLoanData memory data = 
+//			FlashLoanLiquidation.FlashLoanData({
+//				collateralAsset: ROCKET_FUEL,
+//				debtAsset: WETH,
+//				debtAmount: 1 * 1e18,
+//				trancheId: 0,
+//				user: user,
+//				swapBeforeFlashloan: swapBeforeFlashloan,
+//				swapAfterFlashloan: swapAfterFlashloan,
+//				ibPath: ibPath
+//			}); 
+//
+//		flashLoanLiquidation.flashLoanCall(data); 
+//
+//	}
 	
 	
 }

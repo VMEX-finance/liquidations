@@ -9,17 +9,14 @@ import {IVault} from "./interfaces/IBalancerVault.sol";
 contract IBTokenMappings {
 	//public mappings 
     mapping(address => address) public tokenMappings; 
-	mapping(address => bytes32) public beetsLookup; 
+	mapping(address => bytes32) public balancerLookup; 
 	mapping(address => bool) public flashloanable; 
 	
 	//public constants
 	address public constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1; 
 	address public constant USDC = 0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8; //this is USDCE, not the native version
-	//address public constant wstETH_CRV_LP = ;
-	//address public constant wstETH_CRV_POOL =; 
-	//address public constant sUSD_THREE_CRV =; //lp AND pool  
-	//address public constant THREE_CRV =; //lp AND pool 
-	//bytes32 public constant SHANGHAI_SHAKEDOWN = ; 
+	address public constant wstETH_CRV_LP = 0xDbcD16e622c95AcB2650b38eC799f76BFC557a0b;
+	address public constant wstETH_CRV_POOL = 0x6eB2dc694eB516B16Dc9FBc678C60052BbdD7d80; 
 	
 	//interfaces
 	ISwapRouter internal swapRouter = 
@@ -43,9 +40,8 @@ contract IBTokenMappings {
 
 	//unwrap to usdc
 	//curve
-	address internal constant CRV_sUSD_THREE_CRV = 0x061b87122Ed14b9526A813209C8a59a633257bAb; 
-    address internal constant CRV_USDC_USDT = 0x7f90122BF0700F9E7e1F688fe926940E8839F353; 
-    address internal constant CRV_FRAX_USDCE = 0xC9B8a3FDECB9D5b218d02555a8Baf332E5B740d5; 
+    address public constant CRV_USDCE_USDT = 0x7f90122BF0700F9E7e1F688fe926940E8839F353; 
+    address public constant CRV_FRAX_USDCE = 0xC9B8a3FDECB9D5b218d02555a8Baf332E5B740d5; 
 
     //camelot
     address internal constant CAM_USDT_USDCE = 0x1C31fB3359357f6436565cCb3E982Bc6Bf4189ae; 
@@ -54,7 +50,19 @@ contract IBTokenMappings {
 
 	
 	constructor() {
-		
+		tokenMappings[CRV_wstETH_ETH] = WETH; 					
+		tokenMappings[CAM_ARB_ETH] = WETH; 
+		tokenMappings[CAM_ETH_USDCE] = WETH; 
+		tokenMappings[CAM_wstETH_ETH] = WETH; 
+
+		tokenMappings[CRV_USDCE_USDT] = USDC; 
+		tokenMappings[CRV_FRAX_USDCE] = USDC; 
+		tokenMappings[CAM_USDT_USDCE] = USDC; 
+		tokenMappings[CAM_LUSD_USDCE] = USDC; 
+
+		balancerLookup[BAL_wstETH_ETH] = 0x9791d590788598535278552eecd4b211bfc790cb000000000000000000000498; 
+		balancerLookup[BAL_WETH_rETH] = 0xade4a71bb62bec25154cfc7e6ff49a513b491e81000000000000000000000497; 
+
 	}
 
 

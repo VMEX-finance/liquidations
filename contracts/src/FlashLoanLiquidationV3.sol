@@ -14,7 +14,7 @@ import {Mothership} from "./Mothership.sol";
 
 contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase { 
 
-	ILendingPool internal lendingPool = ILendingPool(0x60F015F66F3647168831d31C7048ca95bb4FeaF9); //vmex 
+	ILendingPool internal lendingPool = ILendingPool(0x23AEA7d17b63682b4F7D4a78D5929796def836cb); //vmex/arb 
 
 	IPoolAddressesProvider internal constant aaveAddressesProvider = 
 		IPoolAddressesProvider(0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb); //OP
@@ -76,15 +76,15 @@ contract FlashLoanLiquidation is FlashLoanSimpleReceiverBase {
 	}
 	
 	//vmex liquidation			
-	IERC20(decodedParams.debtAsset).approve(address(lendingPool), decodedParams.debtAmount); 
-	lendingPool.liquidationCall(
-		decodedParams.collateralAsset,
-		decodedParams.debtAsset,
-		decodedParams.trancheId,
-		decodedParams.user,
-		type(uint256).max, //max allowable collateral to be liquidated
-		false //no vToken/aToken
-	); 
+	//IERC20(decodedParams.debtAsset).approve(address(lendingPool), decodedParams.debtAmount); 
+	//lendingPool.liquidationCall(
+	//	decodedParams.collateralAsset,
+	//	decodedParams.debtAsset,
+	//	decodedParams.trancheId,
+	//	decodedParams.user,
+	//	type(uint256).max, //max allowable collateral to be liquidated
+	//	false //no vToken/aToken
+	//); 
 
 	//after liquidation, receive a single asset of collateral of amount (debtAmount + liquidation bonus) in usd
 	uint256 afterLiquidationBalance = 

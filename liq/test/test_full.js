@@ -5,7 +5,6 @@ const Web3 = require('web3');
 const web3 = new Web3('http://127.0.0.1:8545');
 const { expect } = require('chai'); 
 const testAbi = require('../../contracts/out/FlashLoanLiquidationV3.sol/FlashLoanLiquidation.json').abi; 
-
 const wethAbi = require('../contracts/wethAbi.json'); 
 const wethAddress = "0x4200000000000000000000000000000000000006"; 
 const daiAddress = "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"; 
@@ -150,40 +149,40 @@ const amount = (1e18).toString();
 async function test(testCollateral, testDebt, testAmount) {
 	//SETUP	
 	//nuke collateral and force hf < 1 
-	let account = "0x042409674e96B513Dc0178f5B8469aC0EaAf59B3"
-	await web3.eth.sendTransaction({to: msigAddress, from: account, value: web3.utils.toWei('10', 'ether')});
-	//impersonate msig
-	await assetMappings.methods.configureAssetMapping(
-  wethAddress, //asset                                                                  
-  800000000000000000n, //baseLTV                                                  
-  825000000000000000n, //liqThreshold                                             
-  1050000000000000000n, //liqBonus                                                
-  35000000000000000000000n, //supplyCap                                           
-  19000000000000000000000n, //borrowCap                                           
-  2000000000000000000n //borrowFactor                                             
-).send({from: msigAddress, gas: 900000});  
-
-	console.log("assetMappings changed"); 
-
-	const mapping = await assetMappings.methods.getAssetMapping(wethAddress).call(); 
-	console.log(mapping); 
-
-	//deposit to add liquidity
-	//have to get WETH, then have to APPROVE
-	await weth.methods.deposit().send({from: account, value: amount, gas: 900000}); 
-	await weth.methods.approve(lendingPoolAddress, amount).send({from: account, gas: 90000}); 
-	await lendingPool.methods.deposit(wethAddress, 0, amount, account, 0).send({from: account, gas: 900000}); 
-	console.log("deposited!"); 
+//	let account = "0x042409674e96B513Dc0178f5B8469aC0EaAf59B3"
+//	await web3.eth.sendTransaction({to: msigAddress, from: account, value: web3.utils.toWei('10', 'ether')});
+//	//impersonate msig
+//	await assetMappings.methods.configureAssetMapping(
+//  wethAddress, //asset                                                                  
+//  800000000000000000n, //baseLTV                                                  
+//  825000000000000000n, //liqThreshold                                             
+//  1050000000000000000n, //liqBonus                                                
+//  35000000000000000000000n, //supplyCap                                           
+//  19000000000000000000000n, //borrowCap                                           
+//  2000000000000000000n //borrowFactor                                             
+//).send({from: msigAddress, gas: 900000});  
+//
+//	console.log("assetMappings changed"); 
+//
+//	const mapping = await assetMappings.methods.getAssetMapping(wethAddress).call(); 
+//	console.log(mapping); 
+//
+//	//deposit to add liquidity
+//	//have to get WETH, then have to APPROVE
+//	await weth.methods.deposit().send({from: account, value: amount, gas: 900000}); 
+//	await weth.methods.approve(lendingPoolAddress, amount).send({from: account, gas: 90000}); 
+//	await lendingPool.methods.deposit(wethAddress, 0, amount, account, 0).send({from: account, gas: 900000}); 
+//	console.log("deposited!"); 
 
 	const params = await liq.mainTest(testCollateral, testDebt, testAmount); 
 	console.log(params); 
 		
-	const test = await flashloanLiq.methods.flashLoanCall(params).send({from: account, gas: 900000}); 
+	//const test = await flashloanLiq.methods.flashLoanCall(params).send({from: account, gas: 900000}); 
 	
 	console.log("liquidation complete"); 
 }
 
-test(wethAddress, wethAddress, String(0.03 * 1e18)); 
+test(usdcAddress, wethAddress, String(0.03 * 1e18)); 
 
 async function testSwap(outToken, fee, amount) {
 	const deadline = Math.floor(Date.now() / 1000 + 1800)

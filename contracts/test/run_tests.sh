@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 
-OP_RPC=https://optimism-mainnet.infura.io/v3/1cad81887e224784a4d2ad2db5c0587a
 test() {
-	forge test --match-path "test/Liq*" --fork-url $OP_RPC -vvv
+	echo $ARB_RPC
+	forge test --match-path "test/Liq*" --fork-url $ARB_RPC -vvv
 }
 
 test

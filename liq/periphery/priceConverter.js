@@ -30,7 +30,7 @@ async function getPriceInWETH(inputToken, amount) {
 	return final; 
 }
 
-//checkPriceInWETH("0x9Bcef72be871e61ED4fBbc7630889beE758eb81D"); 
+//getPriceInWETH("0x9Bcef72be871e61ED4fBbc7630889beE758eb81D", 10000000000000000000); 
 
 module.exports = { getPriceInWETH }; 
 
